@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Pack as a global tool -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>vcsdk</ToolCommandName>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+    <PackageId>V12.Sdk</PackageId>
+    <Version>0.1.0</Version>
+    <Description>V12 SDK for Contract — scaffold, build, and package Contract games into .v12pak archives.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>Charlie</Authors>
+    <PackageTags>v12 contract game engine pak</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../V12.Basic/libs/V12.Pak/V12.Pak.csproj" />
+  </ItemGroup>
+
+  <!-- Templates shipped inside the tool package -->
+  <ItemGroup>
+    <Content Include="Templates/**">
+      <Pack>true</Pack>
+      <PackagePath>content/templates/</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Compile Remove="Templates/**" />
+  </ItemGroup>
+
+</Project>
