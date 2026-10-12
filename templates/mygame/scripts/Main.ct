@@ -1,0 +1,21 @@
+// {{ProjectName}} — Contract entry script
+import __builtin.std;
+import V12.Core;
+import V12.Basic;
+
+Contract {{ProjectName}} {
+    static fn Main() {
+        IO.Println("[{{ProjectName}}] game starting");
+
+        // Spawn an example box into the world
+        var cube = new Element("cube");
+        cube.AddComponent(new BoxMesh());
+        GameRoot.SelectedWorld.AddElement(cube);
+
+        Log.Info("[{{ProjectName}}] demo cube spawned");
+    }
+
+    static fn OnUpdate(dt: float) {
+        // TODO: game logic here
+    }
+}

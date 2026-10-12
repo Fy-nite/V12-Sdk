@@ -1,0 +1,7 @@
+{
+  "Name": "{{ProjectName}}",
+  "Type": "exe",
+  "Main": "scripts/Main.ct",
+  "Output": "bin",
+  "Description": "A V12 Contract game"
+}

@@ -18,8 +18,14 @@ static class BuildCommand
         // If --template given, expand it first (creates a new project dir in cwd)
         if (!string.IsNullOrEmpty(templatePath))
         {
-            Console.WriteLine("[V12.Sdk] Expanding template from '{templatePath}'...");
-                var tExit = PwshUtil.RunProcess(compilerExe, $"new \"{Path.GetFileName(path)}\" --template \"{templatePath}\"", Environment.CurrentDirectory);
+            Console.WriteLine($"[V12.Sdk] Expanding template from '{templatePath}'...");
+            var resolvedTemplate = ResolveTemplate(templatePath);
+            if (!Directory.Exists(resolvedTemplate))
+            {
+                Console.Error.WriteLine($"Error: template not found: '{templatePath}'");
+                return 1;
+            }
+            var tExit = PwshUtil.RunProcess(compilerExe, $"new \"{Path.GetFileName(path)}\" --template \"{resolvedTemplate}\"", Environment.CurrentDirectory);
             if (tExit != 0) return 1;
             // After expansion, re-resolve path as the newly created dir
             path = Path.Combine(Environment.CurrentDirectory, Path.GetFileName(path));
@@ -126,6 +132,42 @@ static class BuildCommand
         double b = bytes; int i = 0;
         while (b >= 1024 && i < u.Length - 1) { b /= 1024; i++; }
         return $"{b:F1}{u[i]}";
+    }
+
+    /// <summary>Resolves a template name or path to an actual directory.</summary>
+    static string ResolveTemplate(string templatePath)
+    {
+        // Absolute path — use as-is
+        if (Path.IsPathRooted(templatePath) && Directory.Exists(templatePath))
+            return templatePath;
+
+        // Relative path — check from cwd first
+        var fromCwd = Path.Combine(Environment.CurrentDirectory, templatePath);
+        if (Directory.Exists(fromCwd))
+            return fromCwd;
+
+        // Named template — try multiple locations
+        // 1. Bundled templates (in the publish directory next to the DLL)
+        var exeFile = typeof(BuildCommand).Assembly.Location;
+        var exeDir = Path.GetDirectoryName(exeFile)!;
+        var bundled = Path.Join(exeDir, "Templates", templatePath);
+        if (Directory.Exists(bundled)) return bundled;
+
+        // Also try as a direct subdirectory of Templates/
+        bundled = Path.Join(exeDir, "Templates", templatePath);
+        if (Directory.Exists(bundled)) return bundled;
+
+        // 2. Local project templates (.purr/templates/<name>)
+        var local = Path.Join(".purr", "templates", templatePath);
+        if (Directory.Exists(local)) return local;
+
+        // 3. Global cache (~/.purr/templates/<name>)
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var global = Path.Join(home, ".purr", "templates", templatePath);
+        if (Directory.Exists(global)) return global;
+
+        // Fall back to original path
+        return templatePath;
     }
 }
 
