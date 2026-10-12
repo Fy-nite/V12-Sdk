@@ -35,7 +35,7 @@ static class BuildCommand
         var ctProjPath = FindCtproj(path);
         if (ctProjPath == null)
         {
-            Console.Error.WriteLine("Error: no contract.ctproj found in '{path}' or parent directories.");
+            Console.WriteLine($"Error: no contract.ctproj found in '{path}' or parent directories.");
             return 1;
         }
 
