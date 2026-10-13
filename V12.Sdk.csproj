@@ -18,7 +18,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../V12.Basic/libs/V12.Pak/V12.Pak.csproj" />
+    <ProjectReference Include="../V12.Pak/V12.Pak.csproj" />
   </ItemGroup>
 
   <!-- Templates shipped inside the tool package -->
