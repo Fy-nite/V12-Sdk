@@ -21,6 +21,35 @@ dotnet tool install --global --add-source ./vcsdk V12.Sdk
 
 ## Commands
 
+### `new-dotnet` — Scaffold a .NET SDK game project
+
+```bash
+vcsdk new-dotnet <name> [options]
+```
+
+Creates a new V12 game project using C# and `.csproj` (dotnet SDK).
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `<name>` | — | Project name | — |
+| `--output <path>` | `-o` | Output directory | `./<name>/` |
+| `--backend <type>` | `-b` | Target backend: `none`, `monoGame`, or `godot` | `none` |
+
+**Examples:**
+
+```bash
+# Create a blank .NET game project
+vcsdk new-dotnet MyGame
+
+# Specify output location
+vcsdk new-dotnet MyGame -o ../games/MyGame
+
+# With MonoGame backend template
+vcsdk new-dotnet MyGame --backend monoGame
+```
+
+---
+
 ### `build` — Compile contracts and pack a `.v12pak`
 
 ```bash
@@ -188,7 +217,11 @@ V12.Sdk/
 │   ├── BuildCommand.cs     ← vcsdk build
 │   ├── ServeCommand.cs     ← vcsdk serve
 │   ├── InstallCommand.cs   ← vcsdk install
-│   └── NewCommand.cs       ← (reserved, delegates to ccl new)
+│   ├── NewCommand.cs       ← ccl new wrapper
+│   └── DotnetNewCommand.cs ← vcsdk new-dotnet (C#/.NET SDK)
+├── templates/
+│   ├── mygame/             ← Contract game template
+│   └── blank-game/         ← C#/dotnet game template
 ├── V12.Sdk.csproj
 └── bin/                    ← (not committed)
 ```

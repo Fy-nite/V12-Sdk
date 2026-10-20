@@ -11,23 +11,19 @@
     <PackageOutputPath>./nupkg</PackageOutputPath>
     <PackageId>V12.Sdk</PackageId>
     <Version>0.1.0</Version>
-    <Description>V12 SDK for Contract — scaffold, build, and package Contract games into .v12pak archives.</Description>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Authors>Charlie</Authors>
-    <PackageTags>v12 contract game engine pak</PackageTags>
+    <Description>V12 SDK — scaffold, build, and package games.</Description>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../V12.Pak/V12.Pak.csproj" />
-  </ItemGroup>
-
-  <!-- Templates shipped inside the tool package -->
-  <ItemGroup>
-    <Content Include="Templates/**">
+    <!-- Templates shipped inside the tool package -->
+    <Content Include="templates/**">
       <Pack>true</Pack>
       <PackagePath>content/templates/</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Exclude nested submodule engines -->
+    <Compile Remove="libs/**" />
     <Compile Remove="Templates/**" />
   </ItemGroup>
 

@@ -68,11 +68,7 @@ static class BuildCommand
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
 
         Console.WriteLine($"[V12.Sdk] Packing v12pak → '{outPath}'");
-        using (var writer = new V12.Pak.V12PakWriter(outPath))
-        {
-            var manifest = writer.PackFromDirectory(Path.GetDirectoryName(ctProjPath)!);
-            writer.Finalize(manifest);
-        }
+        V12.Sdk.V12PakPackager.PackGame(Path.GetDirectoryName(ctProjPath)!, outPath);
         var size = new FileInfo(outPath).Length;
         Console.WriteLine($"[V12.Sdk] Built {outPak} ({FormatBytes(size)})");
         return 0;

@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!--
+    V12 Engine References
+    ---------------------
+    Add references to your local V12 libraries below.
+    
+    For MonoGame: add V12.Monogame as a ProjectReference
+    For Godot: replace this sdk with Godot.NET.Sdk
+    
+    Example (MonoGame):
+    <ItemGroup>
+      <ProjectReference Include="../V12.Monogame/libs/V12.Basic/V12.Basic.csproj" />
+    </ItemGroup>
+  -->
+
+  <!--
+  <ItemGroup>
+    <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.3">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Gum.MonoGame" Version="2026.10.1.1" />
+  </ItemGroup>
+  -->
+
+</Project>

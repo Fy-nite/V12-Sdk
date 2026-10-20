@@ -111,11 +111,7 @@ static class ServeCommand
             var outPath = !string.IsNullOrEmpty(output)
                 ? Path.IsPathRooted(output) ? output : Path.Combine(path, output)
                 : Path.Join(pakDir, "bin", outPak);
-            using (var writer = new V12.Pak.V12PakWriter(outPath))
-            {
-                var manifest = writer.PackFromDirectory(pakDir);
-                writer.Finalize(manifest);
-            }
+            V12.Sdk.V12PakPackager.PackGame(pakDir, outPath);
 
             lastBuild = DateTime.UtcNow;
             Console.WriteLine("[{0}] OK ({1})", DateTimeOffset.Now.ToString("HH:mm:ss"), FormatBytes(new FileInfo(outPath).Length));
