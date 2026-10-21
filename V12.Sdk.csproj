@@ -27,4 +27,11 @@
     <Compile Remove="Templates/**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Packing goes through V12.Pak (the vendored submodule) rather than a
+         hand-rolled tar writer, so the SDK, the studio, and the engine all
+         produce and read one pak format. -->
+    <ProjectReference Include="libs\V12.pak\V12.Pak.csproj" />
+  </ItemGroup>
+
 </Project>
