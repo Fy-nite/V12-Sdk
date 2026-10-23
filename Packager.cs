@@ -6,13 +6,18 @@ namespace V12.Sdk;
 public static class V12PakPackager
 {
     /// <summary>
-    /// Pack a game directory into a .v12pak file. Delegates to V12.Pak so the
-    /// archive and manifest are written by the same code the engine loads with.
+    /// Pack a game directory into a .v12pak file. Uses the directory's own
+    /// <c>manifest.json</c> when present, otherwise generates one by scanning
+    /// the layout (worlds/, assets/, paks/, scripts/).
     /// </summary>
     public static void PackGame(string gameDir, string outputPath)
-    {
-        using var writer = new V12PakWriter(outputPath);
-        var manifest = writer.PackFromDirectory(gameDir);
-        writer.Finalize(manifest);
-    }
+        => V12PakBuilder.Build(gameDir, outputPath);
+
+    /// <summary>Pack a game directory using exactly the supplied manifest.</summary>
+    public static void PackGame(string gameDir, string outputPath, V12PakManifest manifest)
+        => V12PakBuilder.Build(gameDir, outputPath, manifest);
+
+    /// <summary>Pack a game directory using the manifest at <paramref name="manifestPath"/>.</summary>
+    public static void PackGame(string gameDir, string outputPath, string manifestPath)
+        => V12PakBuilder.Build(gameDir, outputPath, manifestPath);
 }

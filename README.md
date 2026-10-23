@@ -58,10 +58,14 @@ vcsdk build [path] [options]
 
 Builds a game project: finds `contract.ctproj`, runs `ccl build`, then packs everything into a `.v12pak`.
 
+When no `contract.ctproj` is present (e.g. a C#/Godot game or a content-only
+directory), the `ccl build` step is skipped and the directory is packed as-is.
+
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
 | `[path]` | — | Path to game project root | `.` (current dir) |
 | `--output <path>` | `-o` | Output `.v12pak` path | `bin/<name>.v12pak` in project dir |
+| `--manifest <path>` | `-m` | Use this manifest instead of auto-detecting (validated against the project dir) | *(none)* |
 | `--compiler <exe>` | `-x` | Contract compiler executable | `ccl` |
 | `--template <dir>` | `-t` | Expand a template before building | *(none)* |
 
@@ -79,6 +83,9 @@ vcsdk build -x /opt/ccl/bin/contract
 
 # Create + build from a template in one step
 vcsdk build --template ./SpinWorldTemplate MyGame
+
+# Pack a C#/Godot game with an explicit manifest
+vcsdk build ./MyGodotGame -m ./MyGodotGame/build.manifest.json
 ```
 
 ---

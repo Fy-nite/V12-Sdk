@@ -10,6 +10,7 @@ static class BuildCommand
         var output = GetOpt(args, "--output", "-o");
         var compilerExe = GetOpt(args, "--compiler", "-x") ?? "ccl";
         var templatePath = GetOpt(args, "--template", "-t");  // NEW
+        var manifestPath = GetOpt(args, "--manifest", "-m");
 
         // Positional arg: path (first non-option token)
         var path = GetPositional(args, 0) ?? ".";
@@ -37,38 +38,77 @@ static class BuildCommand
             return 1;
         }
 
-        // Find contract.ctproj
+        // Contract projects have a contract.ctproj and are compiled with ccl.
+        // Pure .NET/content projects (e.g. a Godot game) have none: skip the
+        // Contract compile step and pack their content directly.
         var ctProjPath = FindCtproj(path);
-        if (ctProjPath == null)
+        string gameDir;
+        string projectName;
+
+        if (ctProjPath != null)
         {
-            Console.WriteLine($"Error: no contract.ctproj found in '{path}' or parent directories.");
-            return 1;
+            Console.WriteLine($"[V12.Sdk] Found project: {ctProjPath}");
+
+            var proj = CtProject.Read(File.ReadAllText(ctProjPath));
+            gameDir = Path.GetDirectoryName(ctProjPath)!;
+            projectName = string.IsNullOrWhiteSpace(proj.Name) ? Path.GetFileName(path) : proj.Name;
+
+            Console.WriteLine("[V12.Sdk] Compiling contracts...");
+            var exitCode = PwshUtil.RunProcess(compilerExe, "build", gameDir);
+            if (exitCode != 0)
+            {
+                Console.Error.WriteLine("Error: compilation failed.");
+                return 1;
+            }
+        }
+        else
+        {
+            gameDir = path;
+            projectName = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+            if (string.IsNullOrWhiteSpace(projectName)) projectName = "game";
+
+            Console.WriteLine("[V12.Sdk] No contract.ctproj found — skipping ccl build (packing only).");
         }
 
-        Console.WriteLine($"[V12.Sdk] Found project: {ctProjPath}");
-
-        var proj = CtProject.Read(File.ReadAllText(ctProjPath));
-        var projectName = string.IsNullOrWhiteSpace(proj.Name) ? Path.GetFileName(path) : proj.Name;
-
-        // Compile contracts via ccl
-        Console.WriteLine("[V12.Sdk] Compiling contracts...");
-        var exitCode = PwshUtil.RunProcess(compilerExe, "build", Path.GetDirectoryName(ctProjPath)!);
-        if (exitCode != 0)
+        // Resolve --manifest relative to the current directory, not the game dir.
+        string? resolvedManifest = null;
+        if (!string.IsNullOrWhiteSpace(manifestPath))
         {
-            Console.Error.WriteLine("Error: compilation failed.");
-            return 1;
+            resolvedManifest = Path.IsPathRooted(manifestPath)
+                ? manifestPath
+                : Path.GetFullPath(manifestPath);
+            if (!File.Exists(resolvedManifest))
+            {
+                Console.Error.WriteLine($"Error: manifest '{resolvedManifest}' not found.");
+                return 1;
+            }
         }
 
         // Pack v12pak
         var outPak = $"{projectName}.v12pak";
         var outPath = !string.IsNullOrEmpty(output)
             ? Path.IsPathRooted(output) ? output : Path.Combine(path, output)
-            : Path.Join(Path.GetDirectoryName(ctProjPath)!, "bin", outPak);
+            : Path.Join(gameDir, "bin", outPak);
 
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
 
-        Console.WriteLine($"[V12.Sdk] Packing v12pak → '{outPath}'");
-        V12.Sdk.V12PakPackager.PackGame(Path.GetDirectoryName(ctProjPath)!, outPath);
+        Console.WriteLine(resolvedManifest != null
+            ? $"[V12.Sdk] Packing v12pak with manifest '{resolvedManifest}' → '{outPath}'"
+            : $"[V12.Sdk] Packing v12pak → '{outPath}'");
+
+        try
+        {
+            if (resolvedManifest != null)
+                V12.Sdk.V12PakPackager.PackGame(gameDir, outPath, resolvedManifest);
+            else
+                V12.Sdk.V12PakPackager.PackGame(gameDir, outPath);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+
         var size = new FileInfo(outPath).Length;
         Console.WriteLine($"[V12.Sdk] Built {outPak} ({FormatBytes(size)})");
         return 0;

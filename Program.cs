@@ -9,9 +9,14 @@ if (args.Length == 0)
     Console.WriteLine();
     Console.WriteLine("Commands:");
     Console.WriteLine("  build [path]            Compile contracts and pack .v12pak");
-    Console.WriteLine("  serve [path]            Watch mode — rebuild on file changes");
+    Console.WriteLine("  serve [path]            Watch mode - rebuild on file changes");
     Console.WriteLine("  install <package>       Install a .coi package from Purr or local path");
     Console.WriteLine("  new-dotnet <name>       Scaffold a new C#/.NET SDK game project");
+    Console.WriteLine();
+    Console.WriteLine("Build/pack options:");
+    Console.WriteLine("  -o, --output <path>     Output .v12pak path");
+    Console.WriteLine("  -m, --manifest <path>   Pack with this manifest instead of auto-detecting");
+    Console.WriteLine("  -x, --compiler <exe>    Contract compiler (default: ccl)");
     Console.WriteLine();
     return 1;
 }

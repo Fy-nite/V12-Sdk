@@ -9,6 +9,9 @@ static class ServeCommand
         var templatePath = GetOpt(args, "--template", "-t");  // NEW
         var intervalStr = GetOpt(args, "--interval", "-i") ?? "500";
         var copyTarget = GetOpt(args, "--copy-target", "-c");
+        var manifestPath = GetOpt(args, "--manifest", "-m");
+        if (!string.IsNullOrWhiteSpace(manifestPath) && !Path.IsPathRooted(manifestPath))
+            manifestPath = Path.GetFullPath(manifestPath);
         int.TryParse(intervalStr, out var interval);
 
         // Positional path arg
@@ -53,7 +56,7 @@ static class ServeCommand
         var lastBuild = DateTime.UtcNow;
         var buildCount = 0;
 
-        RunBuild(watchPaths, path, output, copyTarget, outPak, compilerExe, ref buildCount, ref lastBuild);
+        RunBuild(watchPaths, path, output, copyTarget, manifestPath, outPak, compilerExe, ref buildCount, ref lastBuild);
 
         // Simple cancel handling
         var cancelled = false;
@@ -65,7 +68,7 @@ static class ServeCommand
             {
                 Thread.Sleep(interval);
                 if (HasChanges(watchPaths, lastBuild))
-                    RunBuild(watchPaths, path, output, copyTarget, outPak, compilerExe, ref buildCount, ref lastBuild);
+                    RunBuild(watchPaths, path, output, copyTarget, manifestPath, outPak, compilerExe, ref buildCount, ref lastBuild);
             }
         }
         catch (OperationCanceledException) { }
@@ -94,7 +97,7 @@ static class ServeCommand
         return false;
     }
 
-    static void RunBuild(List<string> watchPaths, string path, string? output, string? copyTarget, 
+    static void RunBuild(List<string> watchPaths, string path, string? output, string? copyTarget, string? manifestPath,
                           string outPak, string compilerExe, ref int buildCount, ref DateTime lastBuild)
     {
         buildCount++;
@@ -111,7 +114,10 @@ static class ServeCommand
             var outPath = !string.IsNullOrEmpty(output)
                 ? Path.IsPathRooted(output) ? output : Path.Combine(path, output)
                 : Path.Join(pakDir, "bin", outPak);
-            V12.Sdk.V12PakPackager.PackGame(pakDir, outPath);
+            if (!string.IsNullOrWhiteSpace(manifestPath))
+                V12.Sdk.V12PakPackager.PackGame(pakDir, outPath, manifestPath);
+            else
+                V12.Sdk.V12PakPackager.PackGame(pakDir, outPath);
 
             lastBuild = DateTime.UtcNow;
             Console.WriteLine("[{0}] OK ({1})", DateTimeOffset.Now.ToString("HH:mm:ss"), FormatBytes(new FileInfo(outPath).Length));
