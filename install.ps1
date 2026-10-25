@@ -3,7 +3,7 @@ param(
 )
 
 # Build the nupkg
-dotnet pack -c Release V12.Sdk.csproj -o ./nupkg
+dotnet pack -p:V12BasicRoot=$(pwd)\libs\V12.Basic -c Release V12.Sdk.csproj -o ./nupkg
 
 # Remove previous global install (use package ID, not command name)
 dotnet tool uninstall --global V12.Sdk 2>$null

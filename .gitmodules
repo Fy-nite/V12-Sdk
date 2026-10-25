@@ -1,3 +1,6 @@
 [submodule "libs/V12.pak"]
 	path = libs/V12.pak
 	url = https://github.com/fy-nite/V12.Pak
+[submodule "libs/V12.Basic"]
+	path = libs/V12.Basic
+	url = https://git.finite.ovh/V12.Basic
