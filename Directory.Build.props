@@ -1,0 +1,24 @@
+<Project>
+
+  <!--
+    Standalone default for V12.Pak. Only used when this checkout is NOT nested
+    inside V12-Monorepo; the import at the bottom overrides it with the
+    monorepo sibling path.
+  -->
+  <PropertyGroup>
+    <V12PakProject Condition="'$(V12PakProject)' == '' and Exists('$(MSBuildThisFileDirectory)libs/V12.pak/V12.Pak.csproj')">$(MSBuildThisFileDirectory)libs/V12.pak/V12.Pak.csproj</V12PakProject>
+  </PropertyGroup>
+
+  <!--
+    MSBuild imports only the nearest Directory.Build.props. Pull in the
+    monorepo root props explicitly when the V12 sibling checkouts are present,
+    so its path redirects win over the libs/ default above.
+  -->
+  <PropertyGroup>
+    <_V12SiblingRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</_V12SiblingRoot>
+    <_V12MonorepoRoot Condition="Exists('$(_V12SiblingRoot)/V12-Engine/V12.csproj') and Exists('$(_V12SiblingRoot)/V12.Basic/V12.Basic.csproj')">$(_V12SiblingRoot)</_V12MonorepoRoot>
+    <_V12MonorepoProps Condition="'$(_V12MonorepoRoot)' != ''">$([System.IO.Path]::Combine('$(_V12MonorepoRoot)', 'Directory.Build.props'))</_V12MonorepoProps>
+  </PropertyGroup>
+  <Import Project="$(_V12MonorepoProps)" Condition="'$(_V12MonorepoProps)' != '' and Exists('$(_V12MonorepoProps)')" />
+
+</Project>
