@@ -7,7 +7,7 @@ static class InstallCommand
     {
         if (args.Length == 0 || string.IsNullOrEmpty(args[0]))
         {
-            Console.Error.WriteLine("Error: missing package argument.\nUsage: vcsdk install <package|path/to/file.coi>");
+            ConOut.WriteError("Error: missing package argument.\nUsage: vcsdk install <package|path/to/file.coi>");
             return 1;
         }
 
@@ -18,11 +18,11 @@ static class InstallCommand
         // If it's a local file, use ccl install with the path
         if (File.Exists(package))
         {
-            Console.WriteLine("[V12.Sdk] Installing from local file: {0}", package);
+            ConOut.WriteLine("[V12.Sdk] Installing from local file: {0}", package);
         }
         else
         {
-            Console.WriteLine("[V12.Sdk] Installing package '{0}' from registry...", package);
+            ConOut.WriteLine("[V12.Sdk] Installing package '{0}' from registry...", package);
         }
 
         var exitCode = PwshUtil.RunProcess(compilerExe, $"install \"{package}\"", cwd);

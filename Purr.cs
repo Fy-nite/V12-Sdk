@@ -38,6 +38,36 @@ static class Purr
     public static string RenderersDir => Path.Combine(Home, "renderers");
     public static string NovaRendererDir => Path.Combine(RenderersDir, "nova");
 
+    public static string RendererDir(string id) => Path.Combine(RenderersDir, id);
+
+    /// <summary>
+    /// Finds an installed renderer by folder or config id. With no id, prefers
+    /// MonoGame (the current default) and otherwise uses the first renderer.
+    /// </summary>
+    public static RendererConfig? FindRenderer(string? id = null)
+    {
+        if (!Directory.Exists(RenderersDir)) return null;
+
+        var configs = new List<RendererConfig>();
+        foreach (var dir in Directory.GetDirectories(RenderersDir))
+        {
+            var config = RendererConfig.Load(dir);
+            if (config != null) configs.Add(config);
+        }
+
+        if (configs.Count == 0) return null;
+
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            return configs.FirstOrDefault(c =>
+                string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(Path.GetFileName(c.Directory), id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return configs.FirstOrDefault(c => string.Equals(c.Id, "monogame", StringComparison.OrdinalIgnoreCase))
+            ?? configs[0];
+    }
+
     public static void EnsureHome()
     {
         Directory.CreateDirectory(PackagesDir);
@@ -169,7 +199,7 @@ static class Purr
   </packageSources>
 </configuration>";
         File.WriteAllText(configPath, xml);
-        Console.WriteLine($"[Purr] Created nuget.config with local feed: {feed}");
+        ConOut.WriteLine($"[Purr] Created nuget.config with local feed: {feed}");
         return true;
     }
 

@@ -37,7 +37,7 @@ static class SyncCommand
         var localDev = @"D:\git\V12-Monorepo";
         if (monorepoUrl == defaultUrl && Directory.Exists(Path.Combine(localDev, ".git")) && File.Exists(Path.Combine(localDev, ".gitmodules")))
         {
-            Console.WriteLine($"[sync] Using local monorepo at {localDev} (override with --monorepo <url>)");
+            ConOut.WriteLine($"[sync] Using local monorepo at {localDev} (override with --monorepo <url>)");
             monorepoUrl = localDev;
         }
 
@@ -48,9 +48,9 @@ static class SyncCommand
         {
             // Local path — use directly, no clone
             monorepoDir = Path.GetFullPath(monorepoUrl);
-            Console.WriteLine($"[sync] Using local monorepo: {monorepoDir}");
+            ConOut.WriteLine($"[sync] Using local monorepo: {monorepoDir}");
             if (!File.Exists(Path.Combine(monorepoDir, ".gitmodules")) && !Directory.Exists(Path.Combine(monorepoDir, "V12-Engine")))
-                Console.WriteLine($"[sync] Warning: {monorepoDir} doesn't look like V12-Monorepo (missing .gitmodules/V12-Engine)");
+                ConOut.WriteLine($"[sync] Warning: {monorepoDir} doesn't look like V12-Monorepo (missing .gitmodules/V12-Engine)");
         }
         else
         {
@@ -61,7 +61,7 @@ static class SyncCommand
             // If PURR_HOME cache already has it, pull; else clone
             if (Directory.Exists(Path.Combine(monorepoDir, ".git")))
             {
-                Console.WriteLine($"[sync] Updating cached monorepo at {monorepoDir} (ref: {refOpt})...");
+                ConOut.WriteLine($"[sync] Updating cached monorepo at {monorepoDir} (ref: {refOpt})...");
                 var pull = PwshUtil.RunProcess("git", $"fetch origin", monorepoDir);
                 if (pull != 0 && !force) return pull;
                 // Try to checkout ref, fall back to main/master
@@ -71,7 +71,7 @@ static class SyncCommand
             }
             else
             {
-                Console.WriteLine($"[sync] Cloning {monorepoUrl} -> {monorepoDir}...");
+                ConOut.WriteLine($"[sync] Cloning {monorepoUrl} -> {monorepoDir}...");
                 // Ensure parent doesn't have stale non-git dir
                 if (Directory.Exists(monorepoDir)) Directory.Delete(monorepoDir, true);
                 var cloneArgs = $"clone --recurse-submodules --depth 1 --branch {refOpt} \"{monorepoUrl}\" \"{monorepoDir}\"";
@@ -79,7 +79,7 @@ static class SyncCommand
                 if (exit != 0)
                 {
                     // Try without --branch (maybe ref is commit) or without recurse
-                    Console.WriteLine($"[sync] Clone with --branch {refOpt} failed, trying without branch...");
+                    ConOut.WriteLine($"[sync] Clone with --branch {refOpt} failed, trying without branch...");
                     exit = PwshUtil.RunProcess("git", $"clone --recurse-submodules \"{monorepoUrl}\" \"{monorepoDir}\"", srcDir);
                     if (exit != 0) return exit;
                     PwshUtil.RunProcess("git", $"checkout {refOpt}", monorepoDir);
@@ -88,7 +88,7 @@ static class SyncCommand
             }
         }
 
-        Console.WriteLine($"[sync] Packing Finite.* v{version} -> {packagesDir}");
+        ConOut.WriteLine($"[sync] Packing Finite.* v{version} -> {packagesDir}");
 
         // Also try to read version from monorepo's Directory.Build.props if not specified
         if (string.IsNullOrWhiteSpace(versionOpt))
@@ -100,6 +100,7 @@ static class SyncCommand
         var projects = new[]
         {
             Path.Combine(monorepoDir!, "V12-Engine", "V12.csproj"),
+            Path.Combine(monorepoDir!, "V12.Basic", "V12.Basic.csproj"),
             Path.Combine(monorepoDir!, "V12.Pak", "V12.Pak.csproj"),
         };
 
@@ -109,17 +110,17 @@ static class SyncCommand
         {
             if (!File.Exists(proj))
             {
-                Console.WriteLine($"[sync] Skip missing {proj}");
+                ConOut.WriteLine($"[sync] Skip missing {proj}");
                 continue;
             }
             var name = Path.GetFileNameWithoutExtension(proj);
-            Console.WriteLine($"[sync] Packing {name} ({Path.GetFileName(proj)})...");
+            ConOut.WriteLine($"[sync] Packing {name} ({Path.GetFileName(proj)})...");
             var args2 = $"pack \"{proj}\" -c Release -o \"{packagesDir}\" -p:Version={version} --nologo -v {verbosity}";
             if (noBuild) args2 += " --no-build";
             var exit = PwshUtil.RunProcess("dotnet", args2, Path.GetDirectoryName(proj)!);
             if (exit != 0)
             {
-                Console.Error.WriteLine($"[sync] dotnet pack failed for {proj} (exit {exit})");
+                ConOut.WriteError($"[sync] dotnet pack failed for {proj} (exit {exit})");
                 if (!force) return exit;
             }
             else packed++;
@@ -133,18 +134,18 @@ static class SyncCommand
             {
                 try { File.Copy(f, Path.Combine(legacy, Path.GetFileName(f)), true); } catch { }
             }
-            Console.WriteLine($"[sync] Mirrored to {legacy}");
+            ConOut.WriteLine($"[sync] Mirrored to {legacy}");
         }
 
-        Console.WriteLine($"\n[sync] Done. Packed {packed} package(s) v{version} -> {packagesDir}");
-        Console.WriteLine($"[sync] Feed ready. Try: vcsdk build");
+        ConOut.WriteLine($"\n[sync] Done. Packed {packed} package(s) v{version} -> {packagesDir}");
+        ConOut.WriteLine($"[sync] Feed ready. Try: vcsdk build");
         if (Directory.GetFiles(packagesDir, "*.nupkg").Length == 0)
         {
-            Console.Error.WriteLine($"[sync] Warning: no nupkgs in {packagesDir}");
+            ConOut.WriteError($"[sync] Warning: no nupkgs in {packagesDir}");
             return 1;
         }
         foreach (var f in Directory.GetFiles(packagesDir, "*.nupkg").OrderByDescending(f => new FileInfo(f).LastWriteTime).Take(5))
-            Console.WriteLine($"  {Path.GetFileName(f)}");
+            ConOut.WriteLine($"  {Path.GetFileName(f)}");
 
         return 0;
     }
@@ -184,11 +185,11 @@ static class SyncCommand
 
     static void ShowHelp()
     {
-        Console.WriteLine("""
+        ConOut.WriteLine("""
 vcsdk sync [options]
 
 Sync Purr packages from the V12-Monorepo into ~/.purr/packages.
-Clones/pulls the monorepo and runs dotnet pack for Finite.V12, Finite.V12.Pak.
+Clones/pulls the monorepo and runs dotnet pack for Finite.V12, Finite.V12.Basic, Finite.V12.Pak.
 
 Options:
   --monorepo <url|path>  Monorepo git URL or local path (default: https://github.com/Fy-nite/V12.git, or D:\git\V12-Monorepo if present)
