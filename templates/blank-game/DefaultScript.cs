@@ -1,20 +1,19 @@
 // {name} - V12 component script
-using V12.Core;
-using V12.Core.UI;
+using V12.Components;
+using V12.Basic.Building;
 
 namespace {name-to-lower}.Components
 {
     /// <summary>Example component extending V12's ECS system.</summary>
-    public class DefaultScript : ComponentBase
+    public sealed class DefaultScript : ScriptableComponent
     {
-        public override void Initialize()
-        {
-            // TODO: Initialize component state
-        }
+        /// <summary>Degrees per second applied to the owning element's Y rotation.</summary>
+        public float Speed { get; set; } = 45f;
 
         public override void Update(float deltaTime)
         {
-            // TODO: Implement component update logic
+            if (Owner == null) return;
+            Owner.GetOrAddTransform().RY += Speed * deltaTime;
         }
     }
 }

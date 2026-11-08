@@ -17,6 +17,7 @@ static class SyncCommand
         var force = args.Contains("--force") || args.Contains("-f");
         var noBuild = args.Contains("--no-build");
         var verbose = args.Contains("--verbose");
+        var dev = args.Contains("--dev") || args.Contains("-d");
 
         // Resolve version
         var version = versionOpt ?? TryReadV12VersionFromMonorepo() ?? "1.0.0";
@@ -33,12 +34,16 @@ static class SyncCommand
         var defaultUrl = "https://github.com/Fy-nite/V12.git";
         var monorepoUrl = monorepoOpt ?? envUrl ?? defaultUrl;
 
-        // For local dev, if D:\git\V12-Monorepo exists and url is default, prefer local path to avoid clone
-        var localDev = @"D:\git\V12-Monorepo";
-        if (monorepoUrl == defaultUrl && Directory.Exists(Path.Combine(localDev, ".git")) && File.Exists(Path.Combine(localDev, ".gitmodules")))
+        // Prefer a local checkout when run from inside one, but never assume a
+        // machine path. --monorepo and V12_MONOREPO_URL always win.
+        if (monorepoUrl == defaultUrl)
         {
-            Console.WriteLine($"[sync] Using local monorepo at {localDev} (override with --monorepo <url>)");
-            monorepoUrl = localDev;
+            var localMonorepo = Purr.FindMonorepo();
+            if (localMonorepo != null)
+            {
+                ConOut.WriteLine($"[sync] Using local monorepo at {localMonorepo} (override with --monorepo <url>)");
+                monorepoUrl = localMonorepo;
+            }
         }
 
         string? monorepoDir = null;
@@ -48,9 +53,9 @@ static class SyncCommand
         {
             // Local path — use directly, no clone
             monorepoDir = Path.GetFullPath(monorepoUrl);
-            Console.WriteLine($"[sync] Using local monorepo: {monorepoDir}");
+            ConOut.WriteLine($"[sync] Using local monorepo: {monorepoDir}");
             if (!File.Exists(Path.Combine(monorepoDir, ".gitmodules")) && !Directory.Exists(Path.Combine(monorepoDir, "V12-Engine")))
-                Console.WriteLine($"[sync] Warning: {monorepoDir} doesn't look like V12-Monorepo (missing .gitmodules/V12-Engine)");
+                ConOut.WriteLine($"[sync] Warning: {monorepoDir} doesn't look like V12-Monorepo (missing .gitmodules/V12-Engine)");
         }
         else
         {
@@ -61,7 +66,7 @@ static class SyncCommand
             // If PURR_HOME cache already has it, pull; else clone
             if (Directory.Exists(Path.Combine(monorepoDir, ".git")))
             {
-                Console.WriteLine($"[sync] Updating cached monorepo at {monorepoDir} (ref: {refOpt})...");
+                ConOut.WriteLine($"[sync] Updating cached monorepo at {monorepoDir} (ref: {refOpt})...");
                 var pull = PwshUtil.RunProcess("git", $"fetch origin", monorepoDir);
                 if (pull != 0 && !force) return pull;
                 // Try to checkout ref, fall back to main/master
@@ -71,7 +76,7 @@ static class SyncCommand
             }
             else
             {
-                Console.WriteLine($"[sync] Cloning {monorepoUrl} -> {monorepoDir}...");
+                ConOut.WriteLine($"[sync] Cloning {monorepoUrl} -> {monorepoDir}...");
                 // Ensure parent doesn't have stale non-git dir
                 if (Directory.Exists(monorepoDir)) Directory.Delete(monorepoDir, true);
                 var cloneArgs = $"clone --recurse-submodules --depth 1 --branch {refOpt} \"{monorepoUrl}\" \"{monorepoDir}\"";
@@ -79,7 +84,7 @@ static class SyncCommand
                 if (exit != 0)
                 {
                     // Try without --branch (maybe ref is commit) or without recurse
-                    Console.WriteLine($"[sync] Clone with --branch {refOpt} failed, trying without branch...");
+                    ConOut.WriteLine($"[sync] Clone with --branch {refOpt} failed, trying without branch...");
                     exit = PwshUtil.RunProcess("git", $"clone --recurse-submodules \"{monorepoUrl}\" \"{monorepoDir}\"", srcDir);
                     if (exit != 0) return exit;
                     PwshUtil.RunProcess("git", $"checkout {refOpt}", monorepoDir);
@@ -88,8 +93,6 @@ static class SyncCommand
             }
         }
 
-        Console.WriteLine($"[sync] Packing Finite.* v{version} -> {packagesDir}");
-
         // Also try to read version from monorepo's Directory.Build.props if not specified
         if (string.IsNullOrWhiteSpace(versionOpt))
         {
@@ -97,9 +100,16 @@ static class SyncCommand
             if (!string.IsNullOrWhiteSpace(monorepoVersion)) version = monorepoVersion!;
         }
 
+        // --dev stamps a unique prerelease version so NuGet never reuses a cached
+        // extraction of an older build with the same version.
+        if (dev) version = MakeDevVersion(version);
+
+        ConOut.WriteLine($"[sync] Packing Finite.* v{version} -> {packagesDir}");
+
         var projects = new[]
         {
             Path.Combine(monorepoDir!, "V12-Engine", "V12.csproj"),
+            Path.Combine(monorepoDir!, "V12.Basic", "V12.Basic.csproj"),
             Path.Combine(monorepoDir!, "V12.Pak", "V12.Pak.csproj"),
         };
 
@@ -109,55 +119,84 @@ static class SyncCommand
         {
             if (!File.Exists(proj))
             {
-                Console.WriteLine($"[sync] Skip missing {proj}");
+                ConOut.WriteLine($"[sync] Skip missing {proj}");
                 continue;
             }
             var name = Path.GetFileNameWithoutExtension(proj);
-            Console.WriteLine($"[sync] Packing {name} ({Path.GetFileName(proj)})...");
-            var args2 = $"pack \"{proj}\" -c Release -o \"{packagesDir}\" -p:Version={version} --nologo -v {verbosity}";
+            ConOut.WriteLine($"[sync] Packing {name} ({Path.GetFileName(proj)})...");
+            var args2 = $"pack \"{proj}\" -c Release -o \"{packagesDir}\" -p:Version={version} -p:GeneratePackageOnBuild=false -p:DebugSymbols=true -p:DebugType=portable --nologo -v {verbosity}";
             if (noBuild) args2 += " --no-build";
             var exit = PwshUtil.RunProcess("dotnet", args2, Path.GetDirectoryName(proj)!);
             if (exit != 0)
             {
-                Console.Error.WriteLine($"[sync] dotnet pack failed for {proj} (exit {exit})");
+                ConOut.WriteError($"[sync] dotnet pack failed for {proj} (exit {exit})");
                 if (!force) return exit;
             }
             else packed++;
         }
 
-        // Legacy mirror to D:\V12Packages for compat with existing Scramble-Studio global source
-        var legacy = @"D:\V12Packages";
-        if (Directory.Exists(legacy) && packagesDir != legacy)
+        // Drop the packed versions from the NuGet global cache so the next restore
+        // extracts the fresh assemblies even when the version is unchanged.
+        var nugetCache = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".nuget", "packages");
+        var suffix = $".{version}.nupkg";
+        foreach (var nupkg in Directory.GetFiles(packagesDir, $"*{suffix}"))
+        {
+            var fileName = Path.GetFileName(nupkg);
+            if (!fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) continue;
+            var id = fileName.Substring(0, fileName.Length - suffix.Length).ToLowerInvariant();
+            var cache = Path.Combine(nugetCache, id, version);
+            try
+            {
+                if (Directory.Exists(cache))
+                {
+                    Directory.Delete(cache, true);
+                    ConOut.WriteLine($"[sync] Cleared NuGet cache: {id}/{version}");
+                }
+            }
+            catch { }
+        }
+
+        // Optional mirror for existing local feeds (set V12_LEGACY_FEED).
+        var legacy = Environment.GetEnvironmentVariable("V12_LEGACY_FEED");
+        if (!string.IsNullOrWhiteSpace(legacy)
+            && Directory.Exists(legacy)
+            && packagesDir != Path.GetFullPath(legacy))
         {
             foreach (var f in Directory.GetFiles(packagesDir, "Finite.V12*.nupkg"))
             {
                 try { File.Copy(f, Path.Combine(legacy, Path.GetFileName(f)), true); } catch { }
             }
-            Console.WriteLine($"[sync] Mirrored to {legacy}");
+            ConOut.WriteLine($"[sync] Mirrored to {legacy}");
         }
 
-        Console.WriteLine($"\n[sync] Done. Packed {packed} package(s) v{version} -> {packagesDir}");
-        Console.WriteLine($"[sync] Feed ready. Try: vcsdk build");
+        ConOut.WriteLine($"\n[sync] Done. Packed {packed} package(s) v{version} -> {packagesDir}");
+        ConOut.WriteLine($"[sync] Feed ready. Try: vcsdk build");
         if (Directory.GetFiles(packagesDir, "*.nupkg").Length == 0)
         {
-            Console.Error.WriteLine($"[sync] Warning: no nupkgs in {packagesDir}");
+            ConOut.WriteError($"[sync] Warning: no nupkgs in {packagesDir}");
             return 1;
         }
         foreach (var f in Directory.GetFiles(packagesDir, "*.nupkg").OrderByDescending(f => new FileInfo(f).LastWriteTime).Take(5))
-            Console.WriteLine($"  {Path.GetFileName(f)}");
+            ConOut.WriteLine($"  {Path.GetFileName(f)}");
 
         return 0;
     }
 
+    static string MakeDevVersion(string baseVersion)
+    {
+        // Strip any existing prerelease suffix so the result stays valid semver.
+        var dash = baseVersion.IndexOf('-');
+        var core = dash >= 0 ? baseVersion.Substring(0, dash) : baseVersion;
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff");
+        return $"{core}-dev.{stamp}";
+    }
+
     static string? TryReadV12VersionFromMonorepo()
     {
-        // Try local dev monorepo first, then cached
-        foreach (var dir in new[] { @"D:\git\V12-Monorepo", Path.Combine(Purr.Home, "src", "V12-Monorepo") })
-        {
-            var v = TryReadV12Version(dir);
-            if (v != null) return v;
-        }
-        return null;
+        var local = Purr.FindMonorepo();
+        return local != null ? TryReadV12Version(local) : null;
     }
 
     static string? TryReadV12Version(string monorepoDir)
@@ -184,16 +223,17 @@ static class SyncCommand
 
     static void ShowHelp()
     {
-        Console.WriteLine("""
+        ConOut.WriteLine("""
 vcsdk sync [options]
 
 Sync Purr packages from the V12-Monorepo into ~/.purr/packages.
-Clones/pulls the monorepo and runs dotnet pack for Finite.V12, Finite.V12.Pak.
+Clones/pulls the monorepo and runs dotnet pack for Finite.V12, Finite.V12.Basic, Finite.V12.Pak.
 
 Options:
-  --monorepo <url|path>  Monorepo git URL or local path (default: https://github.com/Fy-nite/V12.git, or D:\git\V12-Monorepo if present)
+  --monorepo <url|path>  Monorepo git URL or local path (default: https://github.com/Fy-nite/V12.git, or the nearest local checkout when run inside one)
   --ref <branch>         Git ref to sync (default: main)
   --version <ver>        Package version to pack (default: V12Version from Directory.Build.props, else 1.0.0)
+  --dev, -d              Append a unique -dev.<timestamp> prerelease suffix
   -o, --output <path>    Output packages dir (default: ~/.purr/packages or $PURR_HOME/packages)
   --force                Continue on error, overwrite existing
   --no-build             Pass --no-build to dotnet pack
@@ -202,13 +242,15 @@ Options:
 
 Env:
   V12_MONOREPO_URL       Override default monorepo URL
+  V12_LEGACY_FEED        Optional folder to mirror Finite.V12*.nupkg into
   PURR_HOME              Override ~/.purr location
 
 Examples:
   vcsdk sync
-  vcsdk sync --monorepo D:\git\V12-Monorepo --version 1.0.1
+  vcsdk sync --dev
+  vcsdk sync --monorepo ..\V12-Monorepo --version 1.0.1
   vcsdk sync --ref main --verbose
-  PURR_HOME=D:\purr vcsdk sync
+  PURR_HOME=/path/to/purr vcsdk sync
 """);
     }
 }

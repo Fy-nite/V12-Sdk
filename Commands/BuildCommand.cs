@@ -11,19 +11,21 @@ static class BuildCommand
         var compilerExe = GetOpt(args, "--compiler", "-x") ?? "ccl";
         var templatePath = GetOpt(args, "--template", "-t");  // NEW
         var manifestPath = GetOpt(args, "--manifest", "-m");
+        var noRenderer = args.Contains("--no-renderer");
+        var rendererId = noRenderer ? "none" : GetOpt(args, "--renderer", "-r");
 
         // Positional arg: path (first non-option token)
-        var path = GetPositional(args, 0) ?? ".";
+        var path = ArgParser.GetPositional(args, 0) ?? ".";
         path = Path.GetFullPath(path);
 
         // If --template given, expand it first (creates a new project dir in cwd)
         if (!string.IsNullOrEmpty(templatePath))
         {
-            Console.WriteLine($"[V12.Sdk] Expanding template from '{templatePath}'...");
+            ConOut.WriteLine($"[V12.Sdk] Expanding template from '{templatePath}'...");
             var resolvedTemplate = ResolveTemplate(templatePath);
             if (!Directory.Exists(resolvedTemplate))
             {
-                Console.Error.WriteLine($"Error: template not found: '{templatePath}'");
+                ConOut.WriteError($"Error: template not found: '{templatePath}'");
                 return 1;
             }
             var tExit = PwshUtil.RunProcess(compilerExe, $"new \"{Path.GetFileName(path)}\" --template \"{resolvedTemplate}\"", Environment.CurrentDirectory);
@@ -34,8 +36,16 @@ static class BuildCommand
 
         if (!Directory.Exists(path))
         {
-            Console.Error.WriteLine($"Error: directory '{path}' not found.");
+            ConOut.WriteError($"Error: directory '{path}' not found.");
             return 1;
+        }
+
+        // A .NET gameplay project is packaged as a precompiled gamepak, not a
+        // Contract source tree. Delegate so `vcsdk build` keeps working.
+        if (FindCtproj(path) == null && PackCommand.FindProject(path) != null)
+        {
+            ConOut.WriteLine("[V12.Sdk] .NET project detected - delegating to 'vcsdk pack'.");
+            return PackCommand.Execute(args, path);
         }
 
         // Contract projects have a contract.ctproj and are compiled with ccl.
@@ -47,17 +57,17 @@ static class BuildCommand
 
         if (ctProjPath != null)
         {
-            Console.WriteLine($"[V12.Sdk] Found project: {ctProjPath}");
+            ConOut.WriteLine($"[V12.Sdk] Found project: {ctProjPath}");
 
             var proj = CtProject.Read(File.ReadAllText(ctProjPath));
             gameDir = Path.GetDirectoryName(ctProjPath)!;
             projectName = string.IsNullOrWhiteSpace(proj.Name) ? Path.GetFileName(path) : proj.Name;
 
-            Console.WriteLine("[V12.Sdk] Compiling contracts...");
+            ConOut.WriteLine("[V12.Sdk] Compiling contracts...");
             var exitCode = PwshUtil.RunProcess(compilerExe, "build", gameDir);
             if (exitCode != 0)
             {
-                Console.Error.WriteLine("Error: compilation failed.");
+                ConOut.WriteError("Error: compilation failed.");
                 return 1;
             }
         }
@@ -67,7 +77,7 @@ static class BuildCommand
             projectName = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
             if (string.IsNullOrWhiteSpace(projectName)) projectName = "game";
 
-            Console.WriteLine("[V12.Sdk] No contract.ctproj found — skipping ccl build (packing only).");
+            ConOut.WriteLine("[V12.Sdk] No contract.ctproj found — skipping ccl build (packing only).");
         }
 
         // Resolve --manifest relative to the current directory, not the game dir.
@@ -79,7 +89,7 @@ static class BuildCommand
                 : Path.GetFullPath(manifestPath);
             if (!File.Exists(resolvedManifest))
             {
-                Console.Error.WriteLine($"Error: manifest '{resolvedManifest}' not found.");
+                ConOut.WriteError($"Error: manifest '{resolvedManifest}' not found.");
                 return 1;
             }
         }
@@ -92,7 +102,7 @@ static class BuildCommand
 
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
 
-        Console.WriteLine(resolvedManifest != null
+        ConOut.WriteLine(resolvedManifest != null
             ? $"[V12.Sdk] Packing v12pak with manifest '{resolvedManifest}' → '{outPath}'"
             : $"[V12.Sdk] Packing v12pak → '{outPath}'");
 
@@ -105,12 +115,13 @@ static class BuildCommand
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error: {ex.Message}");
+            ConOut.WriteError($"Error: {ex.Message}");
             return 1;
         }
 
         var size = new FileInfo(outPath).Length;
-        Console.WriteLine($"[V12.Sdk] Built {outPak} ({FormatBytes(size)})");
+        ConOut.WriteLine($"[V12.Sdk] Built {outPak} ({FormatBytes(size)})");
+        RendererDeployment.CopyToOutput(outPath, rendererId);
         return 0;
     }
 
@@ -121,20 +132,6 @@ static class BuildCommand
         {
             if (names.Contains(args[i]) && i + 1 < args.Length && !args[i + 1].StartsWith("-"))
                 return args[++i];
-        }
-        return null;
-    }
-
-    // Return the Nth positional argument (skip all -option flags)
-    static string? GetPositional(string[] args, int n)
-    {
-        var count = -1;
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (!args[i].StartsWith("-"))
-            {
-                if (++count == n) return args[i];
-            }
         }
         return null;
     }

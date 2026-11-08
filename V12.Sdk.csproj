@@ -13,6 +13,9 @@
     <Version>0.1.0</Version>
     <Description>V12 SDK — scaffold, build, and package games.</Description>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!-- Scaffolding templates use {name} placeholders and are copied as content,
+         never compiled into the tool. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);templates/**;Templates/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,9 +25,13 @@
       <PackagePath>content/templates/</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <!-- Exclude nested submodule engines -->
+    <!-- Exclude nested submodule engines and scaffolding templates (they use
+         {name} placeholders and are not meant to compile as part of the tool) -->
     <Compile Remove="libs/**" />
     <Compile Remove="Templates/**" />
+    <Compile Remove="templates/**" />
+    <None Remove="Templates/**" />
+    <None Remove="templates/**" />
   </ItemGroup>
 
   <ItemGroup>

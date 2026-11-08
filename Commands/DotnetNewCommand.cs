@@ -15,10 +15,10 @@ static class DotnetNewCommand
             return 0;
         }
 
-        var projectName = GetPositional(args, 0);
+        var projectName = ArgParser.GetPositional(args, 0);
         if (string.IsNullOrEmpty(projectName))
         {
-            Console.Error.WriteLine("Error: missing project name.\nUsage: vcsdk new-dotnet <name>");
+            ConOut.WriteError("Error: missing project name.\nUsage: vcsdk new-dotnet <name>");
             return 1;
         }
 
@@ -32,7 +32,7 @@ static class DotnetNewCommand
 
         if (Directory.Exists(rootPath))
         {
-            Console.Error.WriteLine($"Error: directory '{rootPath}' already exists.");
+            ConOut.WriteError($"Error: directory '{rootPath}' already exists.");
             return 1;
         }
 
@@ -40,11 +40,11 @@ static class DotnetNewCommand
         var templateRoot = FindTemplateDir("blank-game");
         if (!Directory.Exists(templateRoot))
         {
-            Console.Error.WriteLine($"Error: template 'blank-game' not found.");
+            ConOut.WriteError($"Error: template 'blank-game' not found.");
             return 1;
         }
 
-        Console.WriteLine($"[V12.Sdk] Creating .NET game project '{projectName}' at '{rootPath}'...");
+        ConOut.WriteLine($"[V12.Sdk] Creating .NET game project '{projectName}' at '{rootPath}'...");
 
         // Build substitution map
         var lowerName = projectName.ToLowerInvariant();
@@ -68,9 +68,9 @@ static class DotnetNewCommand
             File.WriteAllText(dest, content);
         }
 
-        // Add scripts/ and scenes/ subdirectories
+        // Add scripts/ and worlds/ subdirectories
         Directory.CreateDirectory(Path.Combine(rootPath, "Scripts"));
-        Directory.CreateDirectory(Path.Combine(rootPath, "Scenes"));
+        Directory.CreateDirectory(Path.Combine(rootPath, "worlds"));
 
         // Move DefaultScript.cs into Scripts/
         var scriptSrc = Path.Combine(rootPath, "DefaultScript.cs");
@@ -80,12 +80,13 @@ static class DotnetNewCommand
             File.Move(scriptSrc, scriptDest, true);
         }
 
-        // Move scene.worldml into Scenes/
+        // Move the sample scene into the pak world layout the packer scans.
         var sceneSrc = Path.Combine(rootPath, "scene.worldml");
         if (File.Exists(sceneSrc))
         {
-            var sceneDest = Path.Combine(rootPath, "Scenes", $"{lowerName}Scene.worldml");
-            File.Move(sceneSrc, sceneDest, true);
+            var worldDir = Path.Combine(rootPath, "worlds", projectName);
+            Directory.CreateDirectory(worldDir);
+            File.Move(sceneSrc, Path.Combine(worldDir, "world.xml"), true);
         }
 
         // Rename project file from BlankGame.csproj to name.csproj
@@ -105,31 +106,33 @@ static class DotnetNewCommand
         try { File.Delete(Path.Combine(rootPath, "scene.worldml")); } catch { }
 
         // Write README
-        var readme = $"# {projectName}\n\nA V12 engine game built with .NET SDK.\n\n## Quick Start\n\n" +
-                     $"1. Reference V12 libraries (see `{projectName}.csproj`)\n" +
+        var readme = $"# {projectName}\n\nA V12 game pak built with the .NET SDK.\n\n## Quick Start\n\n" +
+                     $"1. Reference the V12 engine (see `{projectName}.csproj`)\n" +
                      $"2. `dotnet restore`\n" +
-                     $"3. `dotnet run`\n";
+                     $"3. `vcsdk pack`\n" +
+                     $"4. Run the generated renderer next to `bin/{projectName}.v12pak`\n";
         File.WriteAllText(Path.Combine(rootPath, "README.md"), readme);
 
-        Console.WriteLine($"Created .NET game project '{projectName}':");
-        Console.WriteLine($"  {projectName}.csproj     — project file");
-        Console.WriteLine($"  Program.cs             — game entry point");
-        Console.WriteLine($"  Scripts/{lowerName}Script.cs   — component template");
-        Console.WriteLine($"  Scenes/{lowerName}Scene.worldml — default scene");
-        Console.WriteLine("\nNext steps:");
-        Console.WriteLine($"  cd \"{rootPath}\"");
-        Console.WriteLine("  # Edit csproj to reference your V12 libraries");
-        Console.WriteLine("  dotnet restore");
-        Console.WriteLine("  dotnet run");
+        ConOut.WriteLine($"Created .NET game project '{projectName}':");
+        ConOut.WriteLine($"  {projectName}.csproj     — project file (class library)");
+        ConOut.WriteLine($"  GamePack.cs            — IV12Gamepack entry point");
+        ConOut.WriteLine($"  Scripts/{lowerName}Script.cs   — component template");
+        ConOut.WriteLine($"  worlds/{projectName}/world.xml — default scene");
+        ConOut.WriteLine("\nNext steps:");
+        ConOut.WriteLine($"  cd \"{rootPath}\"");
+        ConOut.WriteLine("  # Edit the csproj to reference V12");
+        ConOut.WriteLine("  dotnet restore");
+        ConOut.WriteLine("  vcsdk pack");
         return 0;
     }
 
     static void ShowHelp()
     {
-        Console.WriteLine("""
+        ConOut.WriteLine("""
 vcsdk new-dotnet <name> [options]
 
-Scaffold a new V12 game project using the .NET SDK (C# + csproj).
+Scaffold a new V12 game pak as a .NET class library (C# + csproj). The generic
+V12 renderer loads the published assembly as an IV12Gamepack.
 
 Arguments:
   <name>                  Project name (also becomes the output directory)
@@ -152,19 +155,6 @@ Examples:
         {
             if (names.Contains(args[i]) && i + 1 < args.Length && !args[i + 1].StartsWith("-"))
                 return args[++i];
-        }
-        return null;
-    }
-
-    static string? GetPositional(string[] args, int n)
-    {
-        var count = -1;
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (!args[i].StartsWith("-"))
-            {
-                if (++count == n) return args[i];
-            }
         }
         return null;
     }

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace V12.Sdk;
 
@@ -6,10 +6,10 @@ namespace V12.Sdk;
 /// Resolves the Purr home directory (~/.purr) and its conventional layout:
 /// <code>
 /// ~/.purr/
-///   packages/        # local NuGet feed (Finite.V12, V12.Basic, Nova, etc.)
-///   bin/             # binaries/tools (ccl, vcsdk helpers)
+///   packages/        # local NuGet feed
+///   bin/             # binaries/tools (compiler and SDK helpers)
 ///   renderers/
-///     nova/          # Nova renderer distribution
+///     <id>/          # an installed renderer distribution
 /// </code>
 /// Also provides MSBuild property helpers so `vcsdk build` can compile
 /// dotnet projects against the Purr-provided libraries via `msbuild -p:...`.
@@ -38,6 +38,36 @@ static class Purr
     public static string RenderersDir => Path.Combine(Home, "renderers");
     public static string NovaRendererDir => Path.Combine(RenderersDir, "nova");
 
+    public static string RendererDir(string id) => Path.Combine(RenderersDir, id);
+
+    /// <summary>
+    /// Finds an installed renderer by folder or config id. With no id, prefers
+    /// MonoGame (the current default) and otherwise uses the first renderer.
+    /// </summary>
+    public static RendererConfig? FindRenderer(string? id = null)
+    {
+        if (!Directory.Exists(RenderersDir)) return null;
+
+        var configs = new List<RendererConfig>();
+        foreach (var dir in Directory.GetDirectories(RenderersDir))
+        {
+            var config = RendererConfig.Load(dir);
+            if (config != null) configs.Add(config);
+        }
+
+        if (configs.Count == 0) return null;
+
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            return configs.FirstOrDefault(c =>
+                string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(Path.GetFileName(c.Directory), id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return configs.FirstOrDefault(c => string.Equals(c.Id, "monogame", StringComparison.OrdinalIgnoreCase))
+            ?? configs[0];
+    }
+
     public static void EnsureHome()
     {
         Directory.CreateDirectory(PackagesDir);
@@ -49,6 +79,32 @@ static class Purr
     public static bool HasNovaRenderer => Directory.Exists(NovaRendererDir)
         && (File.Exists(Path.Combine(NovaRendererDir, "project.godot")) || Directory.Exists(Path.Combine(NovaRendererDir, "libs")));
 
+    /// <summary>
+    /// Locates a local V12-Monorepo checkout without relying on a hardcoded
+    /// machine path. Checks the current directory and its ancestors for the
+    /// monorepo markers, then sibling "V12-Monorepo" folders, then the Purr
+    /// source cache.
+    /// </summary>
+    public static string? FindMonorepo(string? startDirectory = null)
+    {
+        static bool LooksLikeMonorepo(string dir)
+            => File.Exists(Path.Combine(dir, ".gitmodules"))
+            && Directory.Exists(Path.Combine(dir, "V12-Engine"));
+
+        var current = Path.GetFullPath(startDirectory ?? Directory.GetCurrentDirectory());
+        var info = new DirectoryInfo(current);
+        for (int depth = 0; depth < 8 && info != null; depth++, info = info.Parent)
+        {
+            if (LooksLikeMonorepo(info.FullName)) return info.FullName;
+
+            var sibling = Path.Combine(info.FullName, "V12-Monorepo");
+            if (LooksLikeMonorepo(sibling)) return sibling;
+        }
+
+        var cached = Path.Combine(Home, "src", "V12-Monorepo");
+        return LooksLikeMonorepo(cached) ? cached : null;
+    }
+
     // -----------------------------------------------------------------------
     // MSBuild properties
     // -----------------------------------------------------------------------
@@ -57,7 +113,7 @@ static class Purr
     /// Build the set of -p:... arguments that point a dotnet build at the
     /// Purr-provided libraries. Only adds a property if the target exists.
     /// </summary>
-    public static string GetMsBuildArgs(string gameDir = null)
+    public static string GetMsBuildArgs(string? gameDir = null)
     {
         var args = new List<string>();
 
@@ -114,7 +170,7 @@ static class Purr
             }
         }
 
-        // Godot project dir for host builds (EcoVR-like game with embedded renderer)
+        // Godot project dir for host builds (a game with an embedded renderer)
         // Only set if the game has no local godot project and Purr has a renderer.
         if (!hasLocalGodot && HasNovaRenderer && Directory.Exists(NovaRendererDir))
             args.Add($"-p:GodotProjectDir=\"{NovaRendererDir}\"");
@@ -126,7 +182,7 @@ static class Purr
         return string.Join(" ", args);
     }
 
-    public static string GetCclExe(string overrideCompiler = null)
+    public static string GetCclExe(string? overrideCompiler = null)
     {
         if (!string.IsNullOrWhiteSpace(overrideCompiler) && overrideCompiler != "ccl")
             return overrideCompiler;
@@ -169,7 +225,7 @@ static class Purr
   </packageSources>
 </configuration>";
         File.WriteAllText(configPath, xml);
-        Console.WriteLine($"[Purr] Created nuget.config with local feed: {feed}");
+        ConOut.WriteLine($"[Purr] Created nuget.config with local feed: {feed}");
         return true;
     }
 

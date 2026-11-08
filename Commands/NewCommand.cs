@@ -6,7 +6,7 @@ static class NewCommand
     {
         if (args.Length == 0 || string.IsNullOrEmpty(args[0]))
         {
-            Console.Error.WriteLine("Error: missing project name.\nUsage: vcsdk new <name>");
+            ConOut.WriteError("Error: missing project name.\nUsage: vcsdk new <name>");
             return 1;
         }
 
@@ -16,7 +16,7 @@ static class NewCommand
 
         if (Directory.Exists(dir))
         {
-            Console.Error.WriteLine($"Error: directory '{dir}' already exists.");
+            ConOut.WriteError($"Error: directory '{dir}' already exists.");
             return 1;
         }
 
@@ -73,10 +73,10 @@ static class NewCommand
             "# OS\n.DS_Store\nThumbs.db\n";
         File.WriteAllText(Path.Join(dir, ".gitignore"), gitignore);
 
-        Console.WriteLine($"Created Contract game project '{name}' at '{dir}'");
-        Console.WriteLine($"  scripts/Main.ct        — entry script (Main + OnUpdate)");
-        Console.WriteLine($"  worlds/DefaultWorld/   — default world definition");
-        Console.WriteLine($"  contract.ctproj        — Contract project config");
+        ConOut.WriteLine($"Created Contract game project '{name}' at '{dir}'");
+        ConOut.WriteLine($"  scripts/Main.ct        — entry script (Main + OnUpdate)");
+        ConOut.WriteLine($"  worlds/DefaultWorld/   — default world definition");
+        ConOut.WriteLine($"  contract.ctproj        — Contract project config");
         return 0;
     }
 }

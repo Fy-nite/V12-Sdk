@@ -17,17 +17,24 @@ dotnet tool install --global --add-source ./vcsdk V12.Sdk
 - [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - `ccl` (Contract CLI) installed and on PATH
 
+### Colored output
+
+Output is colored automatically when writing to a terminal. Colors are disabled
+when output is redirected, when `NO_COLOR` is set, or when `TERM=dumb`. Use
+`--color` to force them (for example when piping) or `--no-color` to disable them.
+
 ---
 
 ## Commands
 
-### `new-dotnet` — Scaffold a .NET SDK game project
+### `new-dotnet` — Scaffold a .NET game pak
 
 ```bash
 vcsdk new-dotnet <name> [options]
 ```
 
-Creates a new V12 game project using C# and `.csproj` (dotnet SDK).
+Creates a new V12 game pak as a C# class library (`.csproj`) implementing
+`IV12Gamepack`. The generic renderer loads the published assembly from the pak.
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
@@ -56,10 +63,11 @@ vcsdk new-dotnet MyGame --backend monoGame
 vcsdk build [path] [options]
 ```
 
-Builds a game project: finds `contract.ctproj`, runs `ccl build`, then packs everything into a `.v12pak`.
+Builds a Contract game project: finds `contract.ctproj`, runs `ccl build`, then packs everything into a `.v12pak`.
 
-When no `contract.ctproj` is present (e.g. a C#/Godot game or a content-only
-directory), the `ccl build` step is skipped and the directory is packed as-is.
+When the directory contains a `.csproj` (and no `contract.ctproj`),
+`vcsdk build` delegates to `vcsdk pack` so .NET projects are published instead
+of shipping C# sources.
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
@@ -68,6 +76,12 @@ directory), the `ccl build` step is skipped and the directory is packed as-is.
 | `--manifest <path>` | `-m` | Use this manifest instead of auto-detecting (validated against the project dir) | *(none)* |
 | `--compiler <exe>` | `-x` | Contract compiler executable | `ccl` |
 | `--template <dir>` | `-t` | Expand a template before building | *(none)* |
+| `--renderer <id>` | `-r` | Installed renderer host to copy beside the pak | `monogame` |
+| `--no-renderer` | — | Do not copy a renderer host | *(false)* |
+
+After packing, `vcsdk build` copies the installed single-file renderer host next
+to the pak and renames it to match (`MyGame.v12pak` → `MyGame.exe`), so the host
+finds the pak automatically on launch.
 
 **Examples:**
 
@@ -90,13 +104,59 @@ vcsdk build ./MyGodotGame -m ./MyGodotGame/build.manifest.json
 
 ---
 
+### `pack` — Publish a .NET project and pack a precompiled gamepak
+
+```bash
+vcsdk pack [path] [options]
+```
+
+Runs `dotnet publish` for a `.csproj`, stages the project assembly into
+`paks/`, dependency DLLs into `bin/`, and packs a `.v12pak`. The generic V12
+renderer loads the assembly as a gamepak, so no C# is compiled at load time.
+
+When a `manifest.json` is present, it is used and augmented with the built
+assembly (and `scripts/*.cs` in live mode). Otherwise a manifest is generated
+from the staged layout.
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `[path]` | — | Project file or project directory | `.` (current dir) |
+| `--output <path>` | `-o` | Output `.v12pak` path | `bin/<name>.v12pak` in project dir |
+| `--manifest <path>` | `-m` | Use this manifest instead of auto-detecting | *(none)* |
+| `--configuration <c>` | — | dotnet build configuration | `Release` |
+| `--renderer <id>` | `-r` | Installed renderer host to copy beside the pak | `monogame` |
+| `--no-renderer` | — | Do not copy a renderer host | *(false)* |
+| `--copy-target <dir>` | `-c` | Copy the built pak into this directory | *(none)* |
+| `--live-scripts` | — | Pack `scripts/*.cs`; compile at load time | *(false)* |
+| `--no-restore` | — | Skip `dotnet restore` during publish | *(false)* |
+| `--strict` | — | Fail when the project's V12 version differs from the renderer's | *(false)* |
+
+The project assembly and first-party `ProjectReference` assemblies go into
+`paks/`; third-party NuGet dependencies go into `bin/`. Engine assemblies
+(`V12*.dll`) are never packed, so the renderer's copy stays authoritative.
+
+**Examples:**
+
+```bash
+# Publish and pack from the current directory
+vcsdk pack
+
+# Pack to a custom output and enforce version parity
+vcsdk pack ./MyGame -o ./dist/MyGame.v12pak --strict
+
+# Keep the old hot-reload path (compile C# at load time)
+vcsdk pack ./MyGame --live-scripts
+```
+
+---
+
 ### `serve` — Watch mode for rapid development
 
 ```bash
 vcsdk serve [path] [options]
 ```
 
-Watches `.ct` and `.xml` files, automatically recompiling and repacking when changes are detected.
+Watches `.ct` and `.xml` files, automatically recompiling and repacking when changes are detected. For `.csproj` projects it watches `.cs`/`.csproj`/content and reruns `vcsdk pack` instead.
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
@@ -106,6 +166,8 @@ Watches `.ct` and `.xml` files, automatically recompiling and repacking when cha
 | `--interval <ms>` | `-i` | Watch poll interval | `500` |
 | `--copy-target <dir>` | `-c` | Copy built pak to this directory | *(none)* |
 | `--template <dir>` | `-t` | Expand a template on start | *(none)* |
+| `--renderer <id>` | `-r` | Installed renderer host to copy beside the pak | `monogame` |
+| `--no-renderer` | — | Do not copy a renderer host | *(false)* |
 
 **Examples:**
 
@@ -221,7 +283,8 @@ V12.Sdk/
 ├── Program.cs              ← CLI entry point
 ├── PwshUtil.cs             ← Process runner utility
 ├── Commands/
-│   ├── BuildCommand.cs     ← vcsdk build
+│   ├── BuildCommand.cs     ← vcsdk build (Contract)
+│   ├── PackCommand.cs      ← vcsdk pack (.NET gamepak)
 │   ├── ServeCommand.cs     ← vcsdk serve
 │   ├── InstallCommand.cs   ← vcsdk install
 │   ├── NewCommand.cs       ← ccl new wrapper
