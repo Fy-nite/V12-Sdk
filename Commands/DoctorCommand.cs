@@ -55,9 +55,10 @@ static class DoctorCommand
         var src = Path.Combine(Purr.Home, "src", "V12-Monorepo");
         ConOut.WriteLine($"\nMonorepo cache: {src} {(Directory.Exists(src) ? "(cached)" : "(not cached)")}");
 
-        var localDev = @"D:\git\V12-Monorepo";
-        if (Directory.Exists(localDev))
-            ConOut.WriteLine($"Local dev monorepo: {localDev} (exists)");
+        var localMonorepo = Purr.FindMonorepo();
+        ConOut.WriteLine(localMonorepo != null
+            ? $"Local monorepo: {localMonorepo}"
+            : "Local monorepo: (none found from the current directory)");
 
         // NuGet sources
         ConOut.WriteLine($"\nNuGet sources:");
