@@ -22,6 +22,11 @@ static class ArgParser
         "--monorepo", "--url",
         "--ref", "--branch",
         "--version", "-v",
+        "--schema", "-s",
+        "--assemblies", "-a",
+        "--templates",
+        "--links",
+        "--include",
     };
 
     /// <summary>
@@ -33,6 +38,54 @@ static class ArgParser
         return args
             .Select(arg => arg.Length > 2 && arg[0] == '-' && arg[1] != '-' ? "-" + arg : arg)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Returns the value for an option, accepting both <c>--name value</c> and
+    /// <c>--name=value</c>.
+    /// </summary>
+    public static string? GetOption(string[] args, params string[] names)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            foreach (var name in names)
+            {
+                if (args[i].StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
+                    return args[i][(name.Length + 1)..];
+            }
+
+            if (names.Contains(args[i]) && i + 1 < args.Length && !args[i + 1].StartsWith("-"))
+                return args[++i];
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Returns every value for a repeatable option, accepting comma-separated
+    /// values and both <c>--name value</c> and <c>--name=value</c>.
+    /// </summary>
+    public static List<string> GetOptions(string[] args, params string[] names)
+    {
+        var values = new List<string>();
+        for (int i = 0; i < args.Length; i++)
+        {
+            string? value = null;
+            foreach (var name in names)
+            {
+                if (args[i].StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
+                {
+                    value = args[i][(name.Length + 1)..];
+                    break;
+                }
+            }
+
+            if (value == null && names.Contains(args[i]) && i + 1 < args.Length && !args[i + 1].StartsWith("-"))
+                value = args[++i];
+
+            if (value == null) continue;
+            values.AddRange(value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+        return values;
     }
 
     /// <summary>Returns the <paramref name="n"/>th positional argument, skipping options and their values.</summary>

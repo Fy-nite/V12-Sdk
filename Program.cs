@@ -12,6 +12,8 @@ static void ShowHelp()
     ConOut.WriteLine("  new-dotnet <name>       Scaffold a new C#/.NET SDK game project");
     ConOut.WriteLine("  build [path]            Compile Contract sources and pack .v12pak");
     ConOut.WriteLine("  pack [path]             Publish a .NET project and pack a gamepak .v12pak");
+    ConOut.WriteLine("  schema [path]           Generate components.schema.xml (ref-only metadata)");
+    ConOut.WriteLine("  links [path]            Check or fix WorldML reference selectors");
     ConOut.WriteLine("  serve [path]            Watch mode - rebuild on file changes");
     ConOut.WriteLine("  install <package>       Install a .coi package from Purr or local path");
     ConOut.WriteLine("  sync [options]          Sync Purr packages from V12-Monorepo (git pull + dotnet pack)");
@@ -30,6 +32,8 @@ static void ShowHelp()
     ConOut.WriteLine("  -t, --template <dir>    Expand a template before building");
     ConOut.WriteLine("  -r, --renderer <id>     Installed renderer host to copy (default: monogame)");
     ConOut.WriteLine("  --no-renderer           Do not copy a renderer host beside the pak");
+    ConOut.WriteLine("  --links <mode>          Reference check: off, check, fix (default: check)");
+    ConOut.WriteLine("  --strict-links          Fail when any reference is unresolved or ambiguous");
     ConOut.WriteLine();
     ConOut.WriteLine("pack [path] [options]");
     ConOut.WriteLine("  [path]                  Project file or project directory (default: .)");
@@ -42,6 +46,8 @@ static void ShowHelp()
     ConOut.WriteLine("  -c, --copy-target <dir> Copy built pak into this directory");
     ConOut.WriteLine("      --live-scripts      Pack .cs sources; compile at load time");
     ConOut.WriteLine("      --no-restore        Skip dotnet restore during publish");
+    ConOut.WriteLine("      --links <mode>      Reference check: off, check, fix (default: check)");
+    ConOut.WriteLine("      --strict-links      Fail when any reference is unresolved or ambiguous");
     ConOut.WriteLine("      --strict            Fail on V12 version mismatch with the renderer");
     ConOut.WriteLine();
     ConOut.WriteLine("serve [path] [options]");
@@ -99,6 +105,8 @@ switch (cmd)
 {
     case "build":          return BuildCommand.Handle(args.Skip(1).ToArray());
     case "pack":           return PackCommand.Handle(args.Skip(1).ToArray());
+    case "schema":         return SchemaCommand.Handle(args.Skip(1).ToArray());
+    case "links":          return LinksCommand.Handle(args.Skip(1).ToArray());
     case "serve":          return ServeCommand.Handle(args.Skip(1).ToArray());
     case "install":        return InstallCommand.Handle(args.Skip(1).ToArray());
     case "new":            return NewCommand.Handle(args.Skip(1).ToArray());
@@ -114,6 +122,8 @@ switch (cmd)
             {
                 case "build":      return BuildCommand.Handle(new[] { "--help" });
                 case "pack":       return PackCommand.Handle(new[] { "--help" });
+                case "schema":     return SchemaCommand.Handle(new[] { "--help" });
+                case "links":      return LinksCommand.Handle(new[] { "--help" });
                 case "serve":      return ServeCommand.Handle(new[] { "--help" });
                 case "install":    return InstallCommand.Handle(new[] { "--help" });
                 case "new":        return NewCommand.Handle(new[] { "--help" });

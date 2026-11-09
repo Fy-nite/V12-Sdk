@@ -13,6 +13,14 @@ static class BuildCommand
         var manifestPath = GetOpt(args, "--manifest", "-m");
         var noRenderer = args.Contains("--no-renderer");
         var rendererId = noRenderer ? "none" : GetOpt(args, "--renderer", "-r");
+        var linksMode = GetOpt(args, "--links") ?? "check";
+        var strictLinks = args.Contains("--strict-links");
+
+        if (!LinkStep.IsValidMode(linksMode))
+        {
+            ConOut.WriteError($"Error: --links must be one of off, check, fix (got '{linksMode}').");
+            return 1;
+        }
 
         // Positional arg: path (first non-option token)
         var path = ArgParser.GetPositional(args, 0) ?? ".";
@@ -94,6 +102,11 @@ static class BuildCommand
             }
         }
 
+        // Link pass: generate a ref schema from the built-in assemblies and
+        // check/fix the authoring files before they are packed.
+        if (!LinkStep.Run(gameDir, AppContext.BaseDirectory, resolvedManifest, linksMode, strictLinks))
+            return 1;
+
         // Pack v12pak
         var outPak = $"{projectName}.v12pak";
         var outPath = !string.IsNullOrEmpty(output)
@@ -125,16 +138,9 @@ static class BuildCommand
         return 0;
     }
 
-    // Return the value for a flag (--flag value) or null if not present
+    // Return the value for a flag (--flag value or --flag=value) or null.
     static string? GetOpt(string[] args, params string[] names)
-    {
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (names.Contains(args[i]) && i + 1 < args.Length && !args[i + 1].StartsWith("-"))
-                return args[++i];
-        }
-        return null;
-    }
+        => ArgParser.GetOption(args, names);
 
     static List<string> DiscoverWorlds(string gameDir)
     {

@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Reserved DOS device names created by `> nul` in a non-cmd shell.
+nul

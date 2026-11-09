@@ -39,6 +39,14 @@ static class PackCommand
         var liveScripts = args.Contains("--live-scripts");
         var noRestore = args.Contains("--no-restore");
         var strict = args.Contains("--strict");
+        var linksMode = GetOpt(args, "--links") ?? "check";
+        var strictLinks = args.Contains("--strict-links");
+
+        if (!LinkStep.IsValidMode(linksMode))
+        {
+            ConOut.WriteError($"Error: --links must be one of off, check, fix (got '{linksMode}').");
+            return 1;
+        }
 
         var renderer = noRenderer ? null : Purr.FindRenderer(rendererId);
         // Publish for the host's RID so only that platform's native assets are
@@ -125,6 +133,13 @@ static class PackCommand
             }
         }
 
+        // Fix links in the source before staging so the authored files stay
+        // correct, then copy the fixed content into the pak stage.
+        var linkAssemblyDir = liveScripts ? AppContext.BaseDirectory : publish;
+        if (linksMode.Equals("fix", StringComparison.OrdinalIgnoreCase)
+            && !LinkStep.Run(gameDir, linkAssemblyDir, manifestSource, "fix", strictLinks))
+            return 1;
+
         CopyContent(gameDir, stage, liveScripts, sourceManifest);
         if (sourceManifest != null && manifestSource != null)
             File.Copy(manifestSource, Path.Combine(stage, "manifest.json"), true);
@@ -136,6 +151,11 @@ static class PackCommand
             if (!CheckEngineVersion(publish, renderer, strict))
                 return 1;
         }
+
+        // Always validate exactly what will be packed, including a fix pass so
+        // the staged copy is known-good before the archive is written.
+        if (!LinkStep.Run(stage, linkAssemblyDir, manifestSource, "check", strictLinks))
+            return 1;
 
         var outPak = $"{projectName}.v12pak";
         var outPath = !string.IsNullOrEmpty(output)
@@ -580,14 +600,7 @@ static class PackCommand
     }
 
     static string? GetOpt(string[] args, params string[] names)
-    {
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (names.Contains(args[i]) && i + 1 < args.Length && !args[i + 1].StartsWith("-"))
-                return args[++i];
-        }
-        return null;
-    }
+        => ArgParser.GetOption(args, names);
 
     static string? ParsePositional(string[] args)
     {
@@ -639,6 +652,8 @@ Options:
       --live-scripts        Pack scripts/*.cs and compile them at load time
                             instead of publishing a precompiled DLL
       --no-restore          Skip dotnet restore during publish
+      --links <mode>        Reference check: off, check, fix (default: check)
+      --strict-links        Fail when any reference is unresolved or ambiguous
       --strict              Fail when the project's V12 version differs from the
                             installed renderer's
   -h, --help                Show help

@@ -39,6 +39,18 @@
          hand-rolled tar writer, so the SDK, the studio, and the engine all
          produce and read one pak format. -->
     <ProjectReference Include="$(V12PakProject)" />
+
+    <!-- The schema generator reflects over the built-in component assemblies.
+         Conditioned so a standalone SDK checkout can still build without the
+         sibling engine sources; in that case pass an assemblies directory explicitly. -->
+    <ProjectReference Include="$(V12EngineProject)" Condition="Exists('$(V12EngineProject)')" />
+    <ProjectReference Include="$(V12BasicProject)" Condition="Exists('$(V12BasicProject)')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Metadata-only reflection: inspect game/engine assemblies without
+         executing module initializers or game code. -->
+    <PackageReference Include="System.Reflection.MetadataLoadContext" Version="8.0.0" />
   </ItemGroup>
 
 </Project>
