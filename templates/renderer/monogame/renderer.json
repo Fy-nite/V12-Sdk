@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "{id}",
+  "name": "{name}",
+  "version": "{v12-version}",
+  "kind": "monogame",
+  "distribution": "dotnet-singlefile",
+  "singleFile": true,
+  "runtimeIdentifier": "win-x64",
+  "selfContained": true,
+  "executable": "{name}.exe",
+  "arguments": [],
+  "sourceProject": "{identifier}.Renderer.csproj",
+  "publishedAtUtc": "{now}",
+  "gamePakMode": "sibling"
+}

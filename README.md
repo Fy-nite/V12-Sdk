@@ -27,33 +27,76 @@ when output is redirected, when `NO_COLOR` is set, or when `TERM=dumb`. Use
 
 ## Commands
 
-### `new-dotnet` — Scaffold a .NET game pak
+### `new` — Scaffold a project
 
 ```bash
-vcsdk new-dotnet <name> [options]
+vcsdk new <contract|net|renderer> --name <name> [options]
 ```
 
-Creates a new V12 game pak as a C# class library (`.csproj`) implementing
-`IV12Gamepack`. The generic renderer loads the published assembly from the pak.
+| Kind | What it creates |
+|---|---|
+| `contract` | Contract (`.ct`) game project |
+| `net` | .NET game pak (C# components + WorldML) |
+| `renderer` | Renderer library targeting `V12.Rendering.IRenderer` |
+
+`--name` is required. The old `vcsdk new <name>` and `vcsdk new-dotnet <name>`
+forms were replaced by this.
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
-| `<name>` | — | Project name | — |
-| `--output <path>` | `-o` | Output directory | `./<name>/` |
-| `--backend <type>` | `-b` | Target backend: `none`, `monoGame`, or `godot` | `none` |
+| `--name <name>` | `-n` | Project name (required) | — |
+| `--output <dir>` | `-o` | Output directory | `./<name>/` |
+| `--type <exe\|lib>` | — | Contract project type | `exe` |
+| `--backend <type>` | `-b` | Renderer backend: `none`, `monogame`, `godot` | `none` |
+| `--id <id>` | — | `renderer.json` id | lowercased name |
 
 **Examples:**
 
 ```bash
-# Create a blank .NET game project
-vcsdk new-dotnet MyGame
-
-# Specify output location
-vcsdk new-dotnet MyGame -o ../games/MyGame
-
-# With MonoGame backend template
-vcsdk new-dotnet MyGame --backend monoGame
+vcsdk new contract --name MyGame
+vcsdk new net --name MyGame
+vcsdk new renderer --name MyRenderer --backend monogame
 ```
+
+#### Purr install model
+
+`.NET` projects created by `new net` and `new renderer` reference the engine from
+`~/.purr`, not from a monorepo checkout:
+
+```
+~/.purr/
+  packages/        Finite.V12.* and Contract.* nupkgs
+  sdk/V12.props    V12Version + package feed, written by `vcsdk sync`
+  renderers/<id>/  installed renderer distributions + renderer.json
+  templates/       user template overrides
+  bin/             tools
+```
+
+The generated `Directory.Build.props` imports `~/.purr/sdk/V12.props` and fails
+with `V12SDK003` when the feed is missing. Run `vcsdk sync` once to populate it.
+
+`new net` uses:
+
+```xml
+<PackageReference Include="Finite.V12.Basic" Version="$(V12Version)" />
+```
+
+`Finite.V12.Basic` brings `Finite.V12`, Audio, Rendering and the Contract
+runtime. Add `Finite.V12.Paper`, `.Editor`, `.Pak` or `.Rendering` only when the
+code uses them.
+
+`new renderer` uses `Finite.V12.Rendering` plus the backend SDK
+(`MonoGame.Framework.DesktopGL` or `Godot.NET.Sdk`). Renderer libraries must not
+reference `V12.Components.*`.
+
+#### Working on the engine itself
+
+Inside the monorepo, the root `Directory.Build.props` defines
+`$(V12EngineProject)`, `$(V12BasicProject)` and the rest of the path table for
+engine and sample builds. Generated projects do not use those properties; they
+consume the Purr packages. The full key list and pak/manifest reference live in
+`Docs/GAMEPAK_PROJECTS.md`.
+
 
 ---
 
@@ -111,8 +154,10 @@ vcsdk pack [path] [options]
 ```
 
 Runs `dotnet publish` for a `.csproj`, stages the project assembly into
-`paks/`, dependency DLLs into `bin/`, and packs a `.v12pak`. The generic V12
-renderer loads the assembly as a gamepak, so no C# is compiled at load time.
+`paks/`, dependency DLLs into `bin/`, and packs a `.v12pak`. The renderer loads
+the assembly and registers every concrete `IComponent` it contains, so no C# is
+compiled at load time. An `IV12Gamepack` entry point is optional; component
+classes are enough.
 
 When a `manifest.json` is present, it is used and augmented with the built
 assembly (and `scripts/*.cs` in live mode). Otherwise a manifest is generated
@@ -183,6 +228,47 @@ vcsdk serve --template ./templates/platformer MyPlatformer
 ```
 
 Press **Ctrl+C** to stop.
+
+---
+
+### `sync` — Build and pack the V12 modules
+
+```bash
+vcsdk sync [options]
+```
+
+Clones or pulls the V12-Monorepo, runs `dotnet pack` for every V12 module into
+the Purr feed (`~/.purr/packages`), then writes `~/.purr/sdk/V12.props` with the
+engine version and feed. The feed includes the engine modules (`Finite.V12`,
+`Finite.V12.Rendering`, `Finite.V12.Audio`, `Finite.V12.Audio.OwnAudio`,
+`Finite.V12.Basic`, `Finite.V12.Paper`, `Finite.V12.Editor`, `Finite.V12.Pak`)
+and the Contract runtime chain (`Contract.Runtime`, `Contract.Compiler`,
+`ObjectRT.*`, `ObjektRT.*`) that `Finite.V12` depends on. Any additional
+root-level `Finite.V12.*` module is picked up automatically.
+
+Scaffolded projects import `~/.purr/sdk/V12.props`; that file is the single
+source of truth for `V12Version` and the package feed.
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `--monorepo <url\|path>` | — | Monorepo URL or local checkout | nearest checkout, else `https://github.com/Fy-nite/V12.git` |
+| `--ref <branch>` | — | Git ref to sync | `main` |
+| `--version <ver>` | `-v` | Package version | `V12Version` from `Directory.Build.props` |
+| `--output <path>` | `-o` | Packages output directory | `$PURR_HOME/packages` |
+| `--dev` | `-d` | Add a unique `-dev.<timestamp>` suffix | *(false)* |
+| `--force` | `-f` | Continue when a module fails to pack | *(false)* |
+| `--no-build` | — | Pass `--no-build` to `dotnet pack` | *(false)* |
+| `--verbose` | — | Verbose pack output | *(false)* |
+
+**Examples:**
+
+```bash
+# Pack the current monorepo into the local Purr feed
+vcsdk sync
+
+# Pack a specific local checkout with a dev version
+vcsdk sync --monorepo ../V12-Monorepo --dev
+```
 
 ---
 
@@ -280,20 +366,26 @@ vcsdk serve MyPlatformer -c ../Scramble-Launcher/games
 
 ```
 V12.Sdk/
-├── Program.cs              ← CLI entry point
-├── PwshUtil.cs             ← Process runner utility
+├── Program.cs                  ← CLI entry point
+├── PwshUtil.cs                 ← Process runner utility
 ├── Commands/
-│   ├── BuildCommand.cs     ← vcsdk build (Contract)
-│   ├── PackCommand.cs      ← vcsdk pack (.NET gamepak)
-│   ├── ServeCommand.cs     ← vcsdk serve
-│   ├── InstallCommand.cs   ← vcsdk install
-│   ├── NewCommand.cs       ← ccl new wrapper
-│   └── DotnetNewCommand.cs ← vcsdk new-dotnet (C#/.NET SDK)
+│   ├── BuildCommand.cs         ← vcsdk build (Contract)
+│   ├── PackCommand.cs          ← vcsdk pack (.NET gamepak)
+│   ├── ServeCommand.cs         ← vcsdk serve
+│   ├── InstallCommand.cs       ← vcsdk install
+│   ├── NewCommand.cs           ← vcsdk new <kind> --name
+│   ├── NetProjectScaffolder.cs ← new net
+│   ├── RendererProjectScaffolder.cs ← new renderer
+│   └── TemplateScaffolder.cs   ← template copy + placeholder replacement
 ├── templates/
-│   ├── mygame/             ← Contract game template
-│   └── blank-game/         ← C#/dotnet game template
+│   ├── mygame/                 ← Contract named template
+│   ├── net/                    ← .NET game pak
+│   └── renderer/
+│       ├── none/
+│       ├── monogame/
+│       └── godot/
 ├── V12.Sdk.csproj
-└── bin/                    ← (not committed)
+└── bin/                        ← (not committed)
 ```
 
 ---

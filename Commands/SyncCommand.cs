@@ -1,7 +1,40 @@
+using System.Xml.Linq;
+
 namespace V12.Sdk.Commands;
 
 static class SyncCommand
 {
+    /// <summary>
+    /// The modules that ship as NuGet packages today. Kept explicit so the
+    /// package ids and pack order are stable, and so a standalone checkout
+    /// silently skips anything that isn't present. New root-level
+    /// <c>Finite.V12.*</c> modules are discovered automatically afterwards.
+    /// </summary>
+    private static readonly (string ProjectPath, string PackageId)[] KnownModules =
+    {
+        // Contract runtime chain. Finite.V12 declares a Contract.Runtime
+        // dependency, so these must be in the feed for a plain PackageReference
+        // restore to succeed.
+        ("Contract/libs/ObjektRT.Core/ObjektRT.Core.csproj", "ObjektRT.Core"),
+        ("Contract/libs/ObjektRT.Stdlib/ObjektRT.Stdlib.csproj", "ObjektRT.Stdlib"),
+        ("Contract/libs/Objekt-RT/src/ObjectRT.Abstractions/ObjectRT.Abstractions.csproj", "ObjectRT.Abstractions"),
+        ("Contract/libs/Objekt-RT/src/ObjectRT.VM/ObjectRT.VM.csproj", "ObjectRT.VM"),
+        ("Contract/libs/Objekt-RT/src/ObjectRT.Runtime/ObjectRT.Runtime.csproj", "ObjectRT.Runtime"),
+        ("Contract/Contract.Compiler.Abstractions/Contract.Compiler.Abstractions.csproj", "Contract.Compiler.Abstractions"),
+        ("Contract/Contract.Compiler/Contract.Compiler.csproj", "Contract.Compiler"),
+        ("Contract/Contract.Runtime/Contract.Runtime.csproj", "Contract.Runtime"),
+
+        // Engine modules.
+        ("V12-Engine/V12.csproj", "Finite.V12"),
+        ("V12.Rendering/V12.Rendering.csproj", "Finite.V12.Rendering"),
+        ("V12.Audio/V12.Audio.csproj", "Finite.V12.Audio"),
+        ("V12.Audio.OwnAudio/V12.Audio.OwnAudio.csproj", "Finite.V12.Audio.OwnAudio"),
+        ("V12.Basic/V12.Basic.csproj", "Finite.V12.Basic"),
+        ("V12.Paper/V12.Paper.csproj", "Finite.V12.Paper"),
+        ("V12.Editor/V12.Editor.csproj", "Finite.V12.Editor"),
+        ("V12.Pak/V12.Pak.csproj", "Finite.V12.Pak"),
+    };
+
     public static int Handle(string[] args)
     {
         if (args.Any(a => a is "-h" or "--help"))
@@ -104,36 +137,37 @@ static class SyncCommand
         // extraction of an older build with the same version.
         if (dev) version = MakeDevVersion(version);
 
-        ConOut.WriteLine($"[sync] Packing Finite.* v{version} -> {packagesDir}");
-
-        var projects = new[]
+        var modules = DiscoverModules(monorepoDir!);
+        if (modules.Count == 0)
         {
-            Path.Combine(monorepoDir!, "V12-Engine", "V12.csproj"),
-            Path.Combine(monorepoDir!, "V12.Basic", "V12.Basic.csproj"),
-            Path.Combine(monorepoDir!, "V12.Pak", "V12.Pak.csproj"),
-        };
+            ConOut.WriteError($"[sync] Error: no packable V12 modules found under '{monorepoDir}'.");
+            return 1;
+        }
+
+        ConOut.WriteLine($"[sync] Packing {modules.Count} module(s) v{version} -> {packagesDir}");
+        ConOut.WriteLine($"       {string.Join(", ", modules.Select(m => m.PackageId))}");
 
         var verbosity = verbose ? "minimal" : "quiet";
         var packed = 0;
-        foreach (var proj in projects)
+        foreach (var module in modules)
         {
-            if (!File.Exists(proj))
-            {
-                ConOut.WriteLine($"[sync] Skip missing {proj}");
-                continue;
-            }
-            var name = Path.GetFileNameWithoutExtension(proj);
-            ConOut.WriteLine($"[sync] Packing {name} ({Path.GetFileName(proj)})...");
-            var args2 = $"pack \"{proj}\" -c Release -o \"{packagesDir}\" -p:Version={version} -p:GeneratePackageOnBuild=false -p:DebugSymbols=true -p:DebugType=portable --nologo -v {verbosity}";
+            ConOut.WriteLine($"[sync] Packing {module.PackageId} ({Path.GetFileName(module.ProjectPath)})...");
+            var args2 = $"pack \"{module.ProjectPath}\" -c Release -o \"{packagesDir}\" -p:Version={version} -p:GeneratePackageOnBuild=false -p:DebugSymbols=true -p:DebugType=portable --nologo -v {verbosity}";
             if (noBuild) args2 += " --no-build";
-            var exit = PwshUtil.RunProcess("dotnet", args2, Path.GetDirectoryName(proj)!);
+            var exit = PwshUtil.RunProcess("dotnet", args2, Path.GetDirectoryName(module.ProjectPath)!);
             if (exit != 0)
             {
-                ConOut.WriteError($"[sync] dotnet pack failed for {proj} (exit {exit})");
+                ConOut.WriteError($"[sync] dotnet pack failed for {module.ProjectPath} (exit {exit})");
                 if (!force) return exit;
             }
             else packed++;
         }
+
+        // Publish the install metadata every scaffolded project imports. This
+        // is what makes ~/.purr the single source of truth for the engine
+        // version and package feed.
+        Purr.WriteV12Props(version, packagesDir);
+        ConOut.WriteLine($"[sync] SDK props: {Purr.V12PropsPath}");
 
         // Drop the packed versions from the NuGet global cache so the next restore
         // extracts the fresh assemblies even when the version is unchanged.
@@ -184,6 +218,80 @@ static class SyncCommand
         return 0;
     }
 
+    /// <summary>
+    /// Builds the pack list from the known modules plus any additional
+    /// root-level <c>Finite.V12.*</c> module with its own csproj. Discovery is
+    /// deliberately shallow: samples, renderer hosts and nested libraries are
+    /// not engine packages and must not be packed here.
+    /// </summary>
+    static List<(string ProjectPath, string PackageId)> DiscoverModules(string monorepoDir)
+    {
+        var root = Path.GetFullPath(monorepoDir);
+        var modules = new List<(string ProjectPath, string PackageId)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string projectPath, string? packageId)
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(root, projectPath));
+            if (!File.Exists(fullPath) || !seen.Add(fullPath)) return;
+
+            var id = string.IsNullOrWhiteSpace(packageId) ? ReadPackageId(fullPath) : packageId;
+            if (string.IsNullOrWhiteSpace(id)) return;
+
+            // The SDK tool has its own version and pack flow.
+            if (id.Equals("Finite.V12.Sdk", StringComparison.OrdinalIgnoreCase)) return;
+
+            modules.Add((fullPath, id!));
+        }
+
+        foreach (var (projectPath, packageId) in KnownModules)
+        {
+            if (!File.Exists(Path.Combine(root, projectPath)))
+            {
+                ConOut.WriteLine($"[sync] Skip missing {projectPath}");
+                continue;
+            }
+            Add(projectPath, packageId);
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            var name = Path.GetFileName(directory);
+            if (name.StartsWith('.')) continue;
+
+            foreach (var project in Directory.EnumerateFiles(directory, "*.csproj", SearchOption.TopDirectoryOnly))
+            {
+                var id = ReadPackageId(project);
+                if (id != null && id.StartsWith("Finite.V12", StringComparison.OrdinalIgnoreCase))
+                    Add(project, id);
+            }
+        }
+
+        return modules;
+    }
+
+    /// <summary>Reads &lt;PackageId&gt; (falling back to &lt;AssemblyName&gt;) from a project file.</summary>
+    static string? ReadPackageId(string projectPath)
+    {
+        try
+        {
+            var doc = XDocument.Load(projectPath);
+            var id = doc.Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "PackageId")?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(id)) return id;
+
+            var assemblyName = doc.Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "AssemblyName")?.Value?.Trim();
+            return string.IsNullOrWhiteSpace(assemblyName)
+                ? Path.GetFileNameWithoutExtension(projectPath)
+                : assemblyName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     static string MakeDevVersion(string baseVersion)
     {
         // Strip any existing prerelease suffix so the result stays valid semver.
@@ -226,8 +334,13 @@ static class SyncCommand
         ConOut.WriteLine("""
 vcsdk sync [options]
 
-Sync Purr packages from the V12-Monorepo into ~/.purr/packages.
-Clones/pulls the monorepo and runs dotnet pack for Finite.V12, Finite.V12.Basic, Finite.V12.Pak.
+Sync Purr packages from the V12-Monorepo into ~/.purr/packages, then write
+~/.purr/sdk/V12.props (engine version + feed) for scaffolded projects.
+Clones/pulls the monorepo and runs dotnet pack for every V12 module: the
+Contract runtime chain (Contract.Runtime, Contract.Compiler, ObjectRT.*,
+ObjektRT.*), Finite.V12, Finite.V12.Basic, Finite.V12.Pak,
+Finite.V12.Rendering, Finite.V12.Audio, Finite.V12.Audio.OwnAudio,
+Finite.V12.Paper, Finite.V12.Editor, plus any new root-level Finite.V12.* module.
 
 Options:
   --monorepo <url|path>  Monorepo git URL or local path (default: https://github.com/Fy-nite/V12.git, or the nearest local checkout when run inside one)

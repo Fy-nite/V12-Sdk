@@ -1,0 +1,18 @@
+<Project Sdk="Godot.NET.Sdk/4.7.0">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>{identifier}</RootNamespace>
+    <AssemblyName>{identifier}.Renderer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The renderer contract is backend-free; add Finite.V12 to the host, not
+         to this library, unless the renderer genuinely needs engine helpers. -->
+    <PackageReference Include="Finite.V12.Rendering" Version="$(V12Version)" />
+  </ItemGroup>
+
+</Project>

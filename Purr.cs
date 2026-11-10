@@ -36,6 +36,9 @@ static class Purr
     public static string PackagesDir => Path.Combine(Home, "packages");
     public static string BinDir => Path.Combine(Home, "bin");
     public static string RenderersDir => Path.Combine(Home, "renderers");
+    public static string SdkDir => Path.Combine(Home, "sdk");
+    public static string V12PropsPath => Path.Combine(SdkDir, "V12.props");
+    public static string TemplatesDir => Path.Combine(Home, "templates");
     public static string NovaRendererDir => Path.Combine(RenderersDir, "nova");
 
     public static string RendererDir(string id) => Path.Combine(RenderersDir, id);
@@ -73,6 +76,60 @@ static class Purr
         Directory.CreateDirectory(PackagesDir);
         Directory.CreateDirectory(BinDir);
         Directory.CreateDirectory(RenderersDir);
+        Directory.CreateDirectory(SdkDir);
+        Directory.CreateDirectory(TemplatesDir);
+    }
+
+    /// <summary>
+    /// Writes <c>~/.purr/sdk/V12.props</c>, the single property file every
+    /// scaffolded project imports. It carries the engine package version and
+    /// adds the Purr package feed to restore. Run by <c>vcsdk sync</c>.
+    /// </summary>
+    public static void WriteV12Props(string version, string? packagesDir = null)
+    {
+        Directory.CreateDirectory(SdkDir);
+
+        var resolved = string.IsNullOrWhiteSpace(packagesDir)
+            ? PackagesDir
+            : Path.GetFullPath(packagesDir);
+        var isDefaultFeed = string.Equals(
+            Path.GetFullPath(resolved).TrimEnd(Path.DirectorySeparatorChar),
+            Path.GetFullPath(PackagesDir).TrimEnd(Path.DirectorySeparatorChar),
+            StringComparison.OrdinalIgnoreCase);
+
+        string feed = isDefaultFeed
+            ? "$(PurrHome)/packages"
+            : resolved.Replace('\\', '/');
+
+        string xml =
+            "<Project>\n" +
+            "  <PropertyGroup>\n" +
+            "    <PurrHome Condition=\"'$(PurrHome)' == '' and '$(PURR_HOME)' != ''\">$(PURR_HOME)</PurrHome>\n" +
+            "    <PurrHome Condition=\"'$(PurrHome)' == '' and '$(USERPROFILE)' != ''\">$(USERPROFILE)/.purr</PurrHome>\n" +
+            "    <PurrHome Condition=\"'$(PurrHome)' == '' and '$(HOME)' != ''\">$(HOME)/.purr</PurrHome>\n" +
+            $"    <V12Version>{version}</V12Version>\n" +
+            $"    <V12PackageFeed>{feed}</V12PackageFeed>\n" +
+            "    <RestoreAdditionalProjectSources>$(RestoreAdditionalProjectSources);$(V12PackageFeed)</RestoreAdditionalProjectSources>\n" +
+            "  </PropertyGroup>\n" +
+            "</Project>\n";
+
+        File.WriteAllText(V12PropsPath, xml, new System.Text.UTF8Encoding(false));
+    }
+
+    /// <summary>Reads the engine package version written by <c>vcsdk sync</c>, or null when not installed.</summary>
+    public static string? ReadV12Version()
+    {
+        try
+        {
+            if (!File.Exists(V12PropsPath)) return null;
+            var match = System.Text.RegularExpressions.Regex.Match(
+                File.ReadAllText(V12PropsPath), "<V12Version>([^<]+)</V12Version>");
+            return match.Success ? match.Groups[1].Value.Trim() : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static bool HasPackagesFeed => Directory.Exists(PackagesDir) && Directory.GetFiles(PackagesDir, "*.nupkg", SearchOption.TopDirectoryOnly).Length > 0;

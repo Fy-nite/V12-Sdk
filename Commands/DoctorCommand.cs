@@ -18,7 +18,15 @@ static class DoctorCommand
         ConOut.WriteLine($"  packages: {Purr.PackagesDir} {(Directory.Exists(Purr.PackagesDir) ? "" : "(missing)")}");
         ConOut.WriteLine($"  bin: {Purr.BinDir} {(Directory.Exists(Purr.BinDir) ? "" : "(missing)")}");
         ConOut.WriteLine($"  renderers: {Purr.RenderersDir} {(Directory.Exists(Purr.RenderersDir) ? "" : "(missing)")}");
-        ConOut.WriteLine($"  nova: {Purr.NovaRendererDir} {(Purr.HasNovaRenderer ? "(found)" : "(not found)")}");
+        ConOut.WriteLine($"  sdk: {Purr.V12PropsPath} {(File.Exists(Purr.V12PropsPath) ? "(ready)" : "(missing; run vcsdk sync)")}");
+        if (Directory.Exists(Purr.RenderersDir))
+        {
+            var installed = Directory.GetDirectories(Purr.RenderersDir)
+                .Select(Path.GetFileName)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            ConOut.WriteLine($"  installed: {(installed.Length == 0 ? "(none)" : string.Join(", ", installed))}");
+        }
 
         // Packages
         var hasFeed = Purr.HasPackagesFeed;
@@ -84,7 +92,9 @@ static class DoctorCommand
         // Suggestions
         ConOut.WriteLine("\nSuggestions:");
         if (!hasFeed) ConOut.WriteLine("  - Run vcsdk sync to populate ~/.purr/packages");
-        if (!Purr.HasNovaRenderer) ConOut.WriteLine("  - Nova renderer not found at ~/.purr/renderers/nova (optional, for Godot hosts)");
+        if (!File.Exists(Purr.V12PropsPath)) ConOut.WriteLine("  - Run vcsdk sync to write ~/.purr/sdk/V12.props");
+        if (Directory.Exists(Purr.RenderersDir) && Directory.GetDirectories(Purr.RenderersDir).Length == 0)
+            ConOut.WriteLine("  - No renderers installed under ~/.purr/renderers");
         if (Purr.FindTool("ccl") == null && FindOnPath("ccl") == null) ConOut.WriteLine("  - ccl not found on PATH nor ~/.purr/bin (install Contract CLI)");
 
         return 0;

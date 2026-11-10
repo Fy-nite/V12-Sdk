@@ -34,6 +34,16 @@
     <None Remove="templates/**" />
   </ItemGroup>
 
+  <!--
+    The tool package ships the build output, and MSBuild does not delete stale
+    copies of Content files. Without this, removing or renaming a template file
+    leaves the old copy in bin/ and it is both scaffolded by `new-dotnet` and
+    packed into the tool. Re-stage the template tree on every build.
+  -->
+  <Target Name="RestageTemplates" BeforeTargets="BeforeBuild">
+    <RemoveDir Directories="$(OutputPath)templates" />
+  </Target>
+
   <ItemGroup>
     <!-- Packing goes through V12.Pak (the vendored submodule) rather than a
          hand-rolled tar writer, so the SDK, the studio, and the engine all

@@ -77,8 +77,8 @@ static class PackCommand
         {
             ConOut.WriteError(
                 "[V12.Sdk] Warning: this project builds an executable with its own entry point. " +
-                "The generic renderer starts IV12Gamepack types, not Program.Main; convert the project " +
-                "to a gamepak library (see `vcsdk new-dotnet`).");
+                "The generic renderer loads component DLLs from paks/ and never runs Program.Main; " +
+                "convert the project to a class library (see `vcsdk new net --name <name>`).");
         }
 
         string? manifestSource = null;

@@ -8,8 +8,9 @@ static void ShowHelp()
     ConOut.WriteLine("Usage: vcsdk <command> [options]");
     ConOut.WriteLine();
     ConOut.WriteLine("Commands:");
-    ConOut.WriteLine("  new <name>              Scaffold a new Contract game project");
-    ConOut.WriteLine("  new-dotnet <name>       Scaffold a new C#/.NET SDK game project");
+    ConOut.WriteLine("  new contract --name <n> Scaffold a Contract game project");
+    ConOut.WriteLine("  new net --name <n>      Scaffold a .NET game pak");
+    ConOut.WriteLine("  new renderer --name <n> Scaffold a V12 renderer library");
     ConOut.WriteLine("  build [path]            Compile Contract sources and pack .v12pak");
     ConOut.WriteLine("  pack [path]             Publish a .NET project and pack a gamepak .v12pak");
     ConOut.WriteLine("  schema [path]           Generate components.schema.xml (ref-only metadata)");
@@ -65,13 +66,13 @@ static void ShowHelp()
     ConOut.WriteLine("  <package>               Package name (registry) or path to .coi file");
     ConOut.WriteLine("  -x, --compiler <exe>    Contract compiler (default: ccl)");
     ConOut.WriteLine();
-    ConOut.WriteLine("new <name>");
-    ConOut.WriteLine("  <name>                  Project name");
-    ConOut.WriteLine();
-    ConOut.WriteLine("new-dotnet <name> [options]");
-    ConOut.WriteLine("  <name>                  Project name");
+    ConOut.WriteLine("new <kind> --name <name> [options]");
+    ConOut.WriteLine("  <kind>                  contract, net, or renderer");
+    ConOut.WriteLine("  -n, --name <name>       Project name (required)");
     ConOut.WriteLine("  -o, --output <dir>      Output directory (default: ./<name>/)");
-    ConOut.WriteLine("  -b, --backend <type>    Target backend: none, monoGame, or godot (default: none)");
+    ConOut.WriteLine("  --type <exe|lib>        Contract project type (contract only)");
+    ConOut.WriteLine("  -b, --backend <type>    none, monogame, or godot (renderer only)");
+    ConOut.WriteLine("  --id <id>               renderer.json id (renderer only)");
     ConOut.WriteLine();
     ConOut.WriteLine("Run 'vcsdk <command> --help' for more details.");
 }
@@ -101,6 +102,16 @@ if (first is "-h" or "--help")
 }
 
 var cmd = args[0].TrimStart('-');
+
+if (cmd is "new-dotnet" or "new-renderer")
+{
+    var replacement = cmd == "new-dotnet" ? "new net" : "new renderer";
+    ConOut.WriteError(
+        $"Error: 'vcsdk {cmd}' was replaced by 'vcsdk {replacement} --name <name>'. " +
+        "Run 'vcsdk new --help'.");
+    return 1;
+}
+
 switch (cmd)
 {
     case "build":          return BuildCommand.Handle(args.Skip(1).ToArray());
@@ -110,7 +121,6 @@ switch (cmd)
     case "serve":          return ServeCommand.Handle(args.Skip(1).ToArray());
     case "install":        return InstallCommand.Handle(args.Skip(1).ToArray());
     case "new":            return NewCommand.Handle(args.Skip(1).ToArray());
-    case "new-dotnet":     return DotnetNewCommand.Handle(args.Skip(1).ToArray());
     case "sync":           return SyncCommand.Handle(args.Skip(1).ToArray());
     case "doctor":         return DoctorCommand.Handle(args.Skip(1).ToArray());
     case "purr":           return DoctorCommand.Handle(args.Skip(1).ToArray());
@@ -127,7 +137,6 @@ switch (cmd)
                 case "serve":      return ServeCommand.Handle(new[] { "--help" });
                 case "install":    return InstallCommand.Handle(new[] { "--help" });
                 case "new":        return NewCommand.Handle(new[] { "--help" });
-                case "new-dotnet": return DotnetNewCommand.Handle(new[] { "--help" });
                 case "sync":       return SyncCommand.Handle(new[] { "--help" });
                 case "doctor":     return DoctorCommand.Handle(new[] { "--help" });
                 default: break;

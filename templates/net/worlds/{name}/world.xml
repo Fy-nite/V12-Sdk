@@ -10,6 +10,13 @@
 		<Component type="MeshRenderer" MeshTargetName="Mesh" />
 		<Component type="MaterialComponent" R="0.24" G="0.26" B="0.3" A="1" Roughness="0.9" />
 	</Element>
+	<Element name="Spinner">
+		<Component type="TransformComponent" x="0" y="1" z="0" />
+		<Component type="MeshComponent" Shape="Box" Width="1" Height="1" Depth="1" />
+		<Component type="MeshRenderer" MeshTargetName="Mesh" />
+		<Component type="MaterialComponent" R="0.82" G="0.52" B="0.24" A="1" Roughness="0.55" />
+		<Component type="{component-name}" Speed="45" />
+	</Element>
 	<Element name="ViewportCamera">
 		<Component type="TransformComponent" x="0" y="2.6" z="7" rotationX="-20.05" />
 		<Component type="CameraComponent" Projection="Perspective" Fov="60" NearClip="0.05" FarClip="1000" OrthoSize="5" IsCurrent="True" />

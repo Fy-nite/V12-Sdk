@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!--
+      Game paks are plugins: the renderer loads this assembly from the packaged
+      .v12pak and registers every concrete IComponent it finds. No IV12Gamepack
+      entry point is required. EnableDynamicLoading makes publish copy the
+      project's dependencies next to the assembly.
+    -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Finite.V12.Basic pulls the engine, audio, rendering and Contract runtime
+      from the Purr feed (~/.purr/packages). Add Finite.V12.Paper, .Editor,
+      .Pak or .Rendering only when the code actually uses them.
+    -->
+    <PackageReference Include="Finite.V12.Basic" Version="$(V12Version)" />
+  </ItemGroup>
+
+</Project>

@@ -10,6 +10,9 @@ static class ArgParser
     static readonly HashSet<string> ValueOptions = new(StringComparer.OrdinalIgnoreCase)
     {
         "--output", "-o",
+        "--name", "-n",
+        "--id",
+        "--type",
         "--compiler", "-x",
         "--template", "-t",
         "--manifest", "-m",

@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    Imports the Purr SDK properties written by `vcsdk sync`. That file is the
+    single source of truth for the engine package version and the package feed.
+  -->
+  <PropertyGroup>
+    <PurrHome Condition="'$(PurrHome)' == '' and '$(PURR_HOME)' != ''">$(PURR_HOME)</PurrHome>
+    <PurrHome Condition="'$(PurrHome)' == '' and '$(USERPROFILE)' != ''">$(USERPROFILE)/.purr</PurrHome>
+    <PurrHome Condition="'$(PurrHome)' == '' and '$(HOME)' != ''">$(HOME)/.purr</PurrHome>
+  </PropertyGroup>
+
+  <Import Project="$(PurrHome)/sdk/V12.props"
+          Condition="'$(PurrHome)' != '' and Exists('$(PurrHome)/sdk/V12.props')" />
+
+  <Target Name="V12VerifyPurr" BeforeTargets="Restore;CollectPackageReferences;PrepareForBuild">
+    <Error Condition="'$(V12Version)' == ''"
+           Code="V12SDK003"
+           Text="V12 is not installed in Purr. Run 'vcsdk sync' to populate $(PurrHome)/packages and $(PurrHome)/sdk/V12.props." />
+  </Target>
+
+</Project>
