@@ -16,6 +16,12 @@ static class BuildCommand
         var linksMode = GetOpt(args, "--links") ?? "check";
         var strictLinks = args.Contains("--strict-links");
 
+        var runtimes = ArgParser.GetOptions(args, "--runtime")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (runtimes.Count == 0) runtimes.Add(Purr.HostRuntimeIdentifier);
+        var multiRuntime = runtimes.Count > 1;
+
         if (!LinkStep.IsValidMode(linksMode))
         {
             ConOut.WriteError($"Error: --links must be one of off, check, fix (got '{linksMode}').");
@@ -107,34 +113,40 @@ static class BuildCommand
         if (!LinkStep.Run(gameDir, AppContext.BaseDirectory, resolvedManifest, linksMode, strictLinks))
             return 1;
 
-        // Pack v12pak
-        var outPak = $"{projectName}.v12pak";
-        var outPath = !string.IsNullOrEmpty(output)
-            ? Path.IsPathRooted(output) ? output : Path.Combine(path, output)
-            : Path.Join(gameDir, "bin", outPak);
-
-        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-
-        ConOut.WriteLine(resolvedManifest != null
-            ? $"[V12.Sdk] Packing v12pak with manifest '{resolvedManifest}' → '{outPath}'"
-            : $"[V12.Sdk] Packing v12pak → '{outPath}'");
-
-        try
+        // Pack one v12pak per requested runtime. Single-RID builds keep the
+        // historic output path; multi-RID builds append -<rid> to the name.
+        foreach (var runtime in runtimes)
         {
-            if (resolvedManifest != null)
-                V12.Sdk.V12PakPackager.PackGame(gameDir, outPath, resolvedManifest);
-            else
-                V12.Sdk.V12PakPackager.PackGame(gameDir, outPath);
-        }
-        catch (Exception ex)
-        {
-            ConOut.WriteError($"Error: {ex.Message}");
-            return 1;
+            if (multiRuntime)
+                ConOut.WriteLine($"[V12.Sdk] Runtime target: {runtime}");
+
+            var outPak = multiRuntime ? $"{projectName}-{runtime}.v12pak" : $"{projectName}.v12pak";
+            var outPath = PackCommand.ResolveOutputPath(path, output, projectName, runtime, multiRuntime);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+
+            ConOut.WriteLine(resolvedManifest != null
+                ? $"[V12.Sdk] Packing v12pak with manifest '{resolvedManifest}' → '{outPath}'"
+                : $"[V12.Sdk] Packing v12pak → '{outPath}'");
+
+            try
+            {
+                if (resolvedManifest != null)
+                    V12.Sdk.V12PakPackager.PackGame(gameDir, outPath, resolvedManifest);
+                else
+                    V12.Sdk.V12PakPackager.PackGame(gameDir, outPath);
+            }
+            catch (Exception ex)
+            {
+                ConOut.WriteError($"Error: {ex.Message}");
+                return 1;
+            }
+
+            var size = new FileInfo(outPath).Length;
+            ConOut.WriteLine($"[V12.Sdk] Built {outPak} ({FormatBytes(size)})");
+            RendererDeployment.CopyToOutput(outPath, rendererId, runtime);
         }
 
-        var size = new FileInfo(outPath).Length;
-        ConOut.WriteLine($"[V12.Sdk] Built {outPak} ({FormatBytes(size)})");
-        RendererDeployment.CopyToOutput(outPath, rendererId);
         return 0;
     }
 

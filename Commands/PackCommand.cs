@@ -28,7 +28,11 @@ static class PackCommand
     /// already resolved the project directory (e.g. <c>vcsdk build</c>) pass it
     /// without re-parsing the original argument list.
     /// </summary>
-    internal static int Execute(string[] args, string? pathOverride = null)
+    internal static int Execute(
+        string[] args,
+        string? pathOverride = null,
+        string? runtimeOverride = null,
+        bool multiRuntime = false)
     {
         var output = GetOpt(args, "--output", "-o");
         var configuration = GetOpt(args, "--configuration") ?? "Release";
@@ -48,10 +52,30 @@ static class PackCommand
             return 1;
         }
 
-        var renderer = noRenderer ? null : Purr.FindRenderer(rendererId);
-        // Publish for the host's RID so only that platform's native assets are
-        // staged (a pak is loaded into one renderer build).
-        var runtime = GetOpt(args, "--runtime") ?? renderer?.RuntimeIdentifier;
+        // --runtime is repeatable/comma-separated. Run the whole publish+pack
+        // flow once per RID, with per-RID output names so builds don't collide.
+        if (runtimeOverride == null)
+        {
+            var requestedRuntimes = ArgParser.GetOptions(args, "--runtime")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (requestedRuntimes.Count > 1)
+            {
+                foreach (var rid in requestedRuntimes)
+                {
+                    ConOut.WriteLine($"[V12.Sdk] Runtime target: {rid}");
+                    var exit = Execute(args, pathOverride, rid, multiRuntime: true);
+                    if (exit != 0) return exit;
+                }
+                return 0;
+            }
+        }
+
+        // Default to the host RID, not the RID stored in a renderer.json (that
+        // is what made Windows renderers drive Linux/macOS builds).
+        var runtime = runtimeOverride ?? GetOpt(args, "--runtime") ?? Purr.HostRuntimeIdentifier;
+        var renderer = noRenderer ? null : Purr.FindRenderer(rendererId, runtime);
 
         var path = pathOverride ?? ParsePositional(args) ?? ".";
         path = Path.GetFullPath(path);
@@ -157,10 +181,8 @@ static class PackCommand
         if (!LinkStep.Run(stage, linkAssemblyDir, manifestSource, "check", strictLinks))
             return 1;
 
-        var outPak = $"{projectName}.v12pak";
-        var outPath = !string.IsNullOrEmpty(output)
-            ? Path.IsPathRooted(output) ? output : Path.Combine(gameDir, output)
-            : Path.Join(gameDir, "bin", outPak);
+        var outPak = multiRuntime ? $"{projectName}-{runtime}.v12pak" : $"{projectName}.v12pak";
+        var outPath = ResolveOutputPath(gameDir, output, projectName, runtime, multiRuntime);
 
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
 
@@ -209,15 +231,53 @@ static class PackCommand
             Directory.CreateDirectory(copyTarget);
             var destination = Path.Combine(copyTarget, outPak);
             File.Copy(outPath, destination, true);
-            RendererDeployment.CopyToOutput(destination, resolvedRenderer);
+            RendererDeployment.CopyToOutput(destination, resolvedRenderer, runtime);
             ConOut.WriteLine($"[V12.Sdk] Copied to '{copyTarget}/'");
         }
         else
         {
-            RendererDeployment.CopyToOutput(outPath, resolvedRenderer);
+            RendererDeployment.CopyToOutput(outPath, resolvedRenderer, runtime);
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Resolves the output pak path. Single-RID builds keep the historic path;
+    /// multi-RID builds append the RID to the pak name. An <c>--output</c> that
+    /// names an existing directory (or ends in a separator) is treated as one,
+    /// and for multi-RID builds a non-.v12pak name is a directory too.
+    /// </summary>
+    internal static string ResolveOutputPath(
+        string gameDir,
+        string? output,
+        string projectName,
+        string runtime,
+        bool multiRuntime)
+    {
+        var name = multiRuntime ? $"{projectName}-{runtime}.v12pak" : $"{projectName}.v12pak";
+
+        if (string.IsNullOrWhiteSpace(output))
+            return Path.Join(gameDir, "bin", name);
+
+        var resolved = Path.IsPathRooted(output) ? output : Path.Combine(gameDir, output);
+        var looksLikeDirectory =
+            Directory.Exists(resolved)
+            || resolved.EndsWith(Path.DirectorySeparatorChar)
+            || resolved.EndsWith(Path.AltDirectorySeparatorChar)
+            // Multi-RID -o names a folder unless it explicitly names a .v12pak.
+            || (multiRuntime && !resolved.EndsWith(".v12pak", StringComparison.OrdinalIgnoreCase));
+
+        if (looksLikeDirectory)
+            return Path.Combine(resolved, name);
+
+        if (!multiRuntime)
+            return resolved;
+
+        var directory = Path.GetDirectoryName(resolved)!;
+        var stem = Path.GetFileNameWithoutExtension(resolved);
+        var extension = Path.GetExtension(resolved);
+        return Path.Combine(directory, $"{stem}-{runtime}{extension}");
     }
 
     /// <summary>Finds the project file to pack: a .csproj path, or the single/first .csproj in a directory.</summary>
@@ -644,8 +704,10 @@ Options:
   -o, --output <path>       Output .v12pak path (default: bin/<name>.v12pak)
   -m, --manifest <path>     Use this manifest.json instead of auto-detecting
       --configuration <c>   dotnet build configuration (default: Release)
-      --runtime <rid>       Publish for this runtime identifier (default: the
-                            installed renderer's RID, else portable)
+      --runtime <rid>       Runtime identifier(s) to build for. Repeatable and
+                            comma-separated, e.g. win-x64,linux-x64. Default:
+                            the host RID. Multi-RID builds name the pak
+                            <name>-<rid>.v12pak and copy the matching renderer.
   -r, --renderer <id>       Installed renderer host to copy (default: monogame)
       --no-renderer         Do not copy a renderer host beside the pak
   -c, --copy-target <dir>   Copy the built pak (and renderer) into this directory

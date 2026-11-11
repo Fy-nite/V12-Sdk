@@ -33,6 +33,7 @@ static void ShowHelp()
     ConOut.WriteLine("  -t, --template <dir>    Expand a template before building");
     ConOut.WriteLine("  -r, --renderer <id>     Installed renderer host to copy (default: monogame)");
     ConOut.WriteLine("  --no-renderer           Do not copy a renderer host beside the pak");
+    ConOut.WriteLine("  --runtime <rid>         Target RID(s), comma-separated (default: host RID)");
     ConOut.WriteLine("  --links <mode>          Reference check: off, check, fix (default: check)");
     ConOut.WriteLine("  --strict-links          Fail when any reference is unresolved or ambiguous");
     ConOut.WriteLine();
@@ -41,7 +42,7 @@ static void ShowHelp()
     ConOut.WriteLine("  -o, --output <path>     Output .v12pak path");
     ConOut.WriteLine("  -m, --manifest <path>   Use this manifest instead of auto-detecting");
     ConOut.WriteLine("      --configuration <c> dotnet build configuration (default: Release)");
-    ConOut.WriteLine("      --runtime <rid>     Publish for this RID (default: renderer RID)");
+    ConOut.WriteLine("      --runtime <rid>     Target RID(s), comma-separated (default: host RID)");
     ConOut.WriteLine("  -r, --renderer <id>     Installed renderer host to copy (default: monogame)");
     ConOut.WriteLine("      --no-renderer       Do not copy a renderer host beside the pak");
     ConOut.WriteLine("  -c, --copy-target <dir> Copy built pak into this directory");
@@ -61,6 +62,7 @@ static void ShowHelp()
     ConOut.WriteLine("  -c, --copy-target <dir> Copy built pak to this directory");
     ConOut.WriteLine("  -r, --renderer <id>     Installed renderer host to copy (default: monogame)");
     ConOut.WriteLine("  --no-renderer           Do not copy a renderer host beside the pak");
+    ConOut.WriteLine("  --runtime <rid>         Target RID (default: host RID)");
     ConOut.WriteLine();
     ConOut.WriteLine("install <package> [options]");
     ConOut.WriteLine("  <package>               Package name (registry) or path to .coi file");

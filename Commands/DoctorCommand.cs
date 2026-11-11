@@ -21,9 +21,10 @@ static class DoctorCommand
         ConOut.WriteLine($"  sdk: {Purr.V12PropsPath} {(File.Exists(Purr.V12PropsPath) ? "(ready)" : "(missing; run vcsdk sync)")}");
         if (Directory.Exists(Purr.RenderersDir))
         {
-            var installed = Directory.GetDirectories(Purr.RenderersDir)
-                .Select(Path.GetFileName)
-                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            var installed = Purr.LoadRenderers()
+                .OrderBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(r => r.RuntimeIdentifier, StringComparer.OrdinalIgnoreCase)
+                .Select(Purr.DescribeRenderer)
                 .ToArray();
             ConOut.WriteLine($"  installed: {(installed.Length == 0 ? "(none)" : string.Join(", ", installed))}");
         }

@@ -46,6 +46,7 @@ static class RendererProjectScaffolder
         var engineVersion = string.IsNullOrWhiteSpace(version)
             ? Purr.ReadV12Version() ?? "1.0.0"
             : version.Trim();
+        var hostRid = Purr.HostRuntimeIdentifier;
 
         var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -56,6 +57,8 @@ static class RendererProjectScaffolder
             ["{id}"] = rendererId,
             ["{v12-version}"] = engineVersion,
             ["{backend}"] = backend,
+            ["{rid}"] = hostRid,
+            ["{host-exe-suffix}"] = OperatingSystem.IsWindows() ? ".exe" : "",
             ["{now}"] = DateTime.UtcNow.ToString("O"),
         };
 
@@ -115,10 +118,12 @@ static class RendererProjectScaffolder
         ## Install as a Purr renderer
 
         The generated `renderer.json` is set for `{{backend}}`
-        (`distribution: {{distribution}}`, `singleFile: {{singleFile}}`).
-        Build the host, publish/export it, then copy the distribution to
-        `~/.purr/renderers/{{rendererId}}/` next to this `renderer.json`.
-        `vcsdk pack -r {{rendererId}}` will then copy it beside a game pak.
+        (`distribution: {{distribution}}`, `singleFile: {{singleFile}}`) and the
+        host RID (`{{hostRid}}`). Build the host, publish/export it, then copy
+        the distribution to `~/.purr/renderers/{{rendererId}}/{{hostRid}}/` next
+        to this `renderer.json`. Add builds for other platforms under their own
+        `<rid>/` folders. `vcsdk pack -r {{rendererId}} --runtime {{hostRid}}`
+        will then copy it beside a game pak.
 
         ## Contract rules
 
@@ -138,7 +143,7 @@ static class RendererProjectScaffolder
         ConOut.WriteLine($"Created V12 renderer '{name}' at '{outputDir}'");
         ConOut.WriteLine($"  {identifier}.Renderer.csproj - renderer library ({backend})");
         ConOut.WriteLine($"  {rendererClass}.cs - IRenderer skeleton");
-        ConOut.WriteLine($"  renderer.json - id '{rendererId}'");
+        ConOut.WriteLine($"  renderer.json - id '{rendererId}' ({hostRid})");
         ConOut.WriteLine();
         ConOut.WriteLine("Next steps:");
         ConOut.WriteLine($"  cd \"{outputDir}\"");

@@ -67,7 +67,7 @@ vcsdk new renderer --name MyRenderer --backend monogame
 ~/.purr/
   packages/        Finite.V12.* and Contract.* nupkgs
   sdk/V12.props    V12Version + package feed, written by `vcsdk sync`
-  renderers/<id>/  installed renderer distributions + renderer.json
+  renderers/<id>/<rid>/  installed renderer distribution + renderer.json
   templates/       user template overrides
   bin/             tools
 ```
@@ -121,10 +121,19 @@ of shipping C# sources.
 | `--template <dir>` | `-t` | Expand a template before building | *(none)* |
 | `--renderer <id>` | `-r` | Installed renderer host to copy beside the pak | `monogame` |
 | `--no-renderer` | — | Do not copy a renderer host | *(false)* |
+| `--runtime <rid>` | — | Target RID(s), comma-separated or repeated | host RID |
 
-After packing, `vcsdk build` copies the installed single-file renderer host next
-to the pak and renames it to match (`MyGame.v12pak` → `MyGame.exe`), so the host
-finds the pak automatically on launch.
+After packing, `vcsdk build` copies the installed renderer host for the target
+RID next to the pak and renames it to match (`MyGame.v12pak` → `MyGame.exe` on
+Windows, `MyGame` on Linux/macOS), so the host finds the pak automatically.
+
+Pass `--runtime` more than once (or comma-separated) to build the same game for
+several platforms. Multi-RID builds name each pak `<name>-<rid>.v12pak` and copy
+the matching renderer build:
+
+```bash
+vcsdk build ./MyGame --runtime win-x64,linux-x64,osx-arm64
+```
 
 **Examples:**
 
@@ -171,6 +180,7 @@ from the staged layout.
 | `--configuration <c>` | — | dotnet build configuration | `Release` |
 | `--renderer <id>` | `-r` | Installed renderer host to copy beside the pak | `monogame` |
 | `--no-renderer` | — | Do not copy a renderer host | *(false)* |
+| `--runtime <rid>` | — | Target RID(s), comma-separated or repeated | host RID |
 | `--copy-target <dir>` | `-c` | Copy the built pak into this directory | *(none)* |
 | `--live-scripts` | — | Pack `scripts/*.cs`; compile at load time | *(false)* |
 | `--no-restore` | — | Skip `dotnet restore` during publish | *(false)* |
@@ -191,7 +201,45 @@ vcsdk pack ./MyGame -o ./dist/MyGame.v12pak --strict
 
 # Keep the old hot-reload path (compile C# at load time)
 vcsdk pack ./MyGame --live-scripts
+
+# Build the pak and copy the matching renderer for several platforms
+vcsdk pack ./MyGame --runtime win-x64,linux-x64,osx-arm64
 ```
+
+### Cross-platform renderer builds
+
+Renderer installs are per-RID:
+
+```
+~/.purr/renderers/
+  monogame/
+    win-x64/      renderer.json + Pulsar.GL.exe
+    linux-x64/    renderer.json + Pulsar.GL
+    osx-arm64/    renderer.json + Pulsar.GL
+```
+
+`vcsdk pack`/`vcsdk build` default to the host RID and only copy a renderer
+build for that RID. Legacy flat installs (`renderers/<id>/renderer.json`) still
+work. To publish the renderers themselves for several platforms:
+
+```bash
+pwsh tools/build-renderers.ps1 -RuntimeIdentifier win-x64,linux-x64,osx-arm64
+```
+
+macOS `.app` bundles (Godot/Nova) are deployed as bundles, not flat binaries:
+
+- the bundle is copied as `<Game>.app`
+- the inner executable in `Contents/MacOS/` is renamed to the game
+- `Info.plist` `CFBundleExecutable` is updated to match
+- an external `Contents/Resources/<name>.pck` is renamed if present (embedded
+  pcks are left alone)
+- `<Game>.v12pak` is copied into `Contents/MacOS/` next to the executable
+
+If `Info.plist` cannot be edited (for example a binary plist), the inner
+executable name is preserved and the pak is named after it, so the host still
+finds it. On macOS the SDK re-signs the modified bundle ad-hoc
+(`codesign --sign -`) so it still launches locally; re-sign with your own
+identity before distributing it.
 
 ---
 
@@ -213,6 +261,7 @@ Watches `.ct` and `.xml` files, automatically recompiling and repacking when cha
 | `--template <dir>` | `-t` | Expand a template on start | *(none)* |
 | `--renderer <id>` | `-r` | Installed renderer host to copy beside the pak | `monogame` |
 | `--no-renderer` | — | Do not copy a renderer host | *(false)* |
+| `--runtime <rid>` | — | Target RID for the renderer host | host RID |
 
 **Examples:**
 

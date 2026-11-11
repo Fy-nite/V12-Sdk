@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace V12.Sdk;
 
@@ -9,7 +10,9 @@ namespace V12.Sdk;
 ///   packages/        # local NuGet feed
 ///   bin/             # binaries/tools (compiler and SDK helpers)
 ///   renderers/
-///     <id>/          # an installed renderer distribution
+///     <id>/
+///       <rid>/       # an installed renderer distribution per runtime
+///       renderer.json # legacy flat install (still supported)
 /// </code>
 /// Also provides MSBuild property helpers so `vcsdk build` can compile
 /// dotnet projects against the Purr-provided libraries via `msbuild -p:...`.
@@ -39,37 +42,126 @@ static class Purr
     public static string SdkDir => Path.Combine(Home, "sdk");
     public static string V12PropsPath => Path.Combine(SdkDir, "V12.props");
     public static string TemplatesDir => Path.Combine(Home, "templates");
-    public static string NovaRendererDir => Path.Combine(RenderersDir, "nova");
+    /// <summary>
+    /// The runtime identifier of the machine running the SDK, used as the
+    /// default build target instead of whatever RID a renderer was published
+    /// for (which is how Windows RIDs leaked into Linux/macOS builds).
+    /// </summary>
+    public static string HostRuntimeIdentifier
+    {
+        get
+        {
+            var rid = RuntimeInformation.RuntimeIdentifier;
+            if (!string.IsNullOrWhiteSpace(rid)) return rid;
 
-    public static string RendererDir(string id) => Path.Combine(RenderersDir, id);
+            var arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+            if (OperatingSystem.IsWindows()) return $"win-{arch}";
+            if (OperatingSystem.IsMacOS()) return $"osx-{arch}";
+            return $"linux-{arch}";
+        }
+    }
 
     /// <summary>
-    /// Finds an installed renderer by folder or config id. With no id, prefers
-    /// MonoGame (the current default) and otherwise uses the first renderer.
+    /// Directory of the newest-style Nova renderer for this host, falling back
+    /// to the legacy flat install.
     /// </summary>
-    public static RendererConfig? FindRenderer(string? id = null)
-    {
-        if (!Directory.Exists(RenderersDir)) return null;
+    public static string NovaRendererDir => FindRendererAny("nova")?.Directory
+        ?? Path.Combine(RenderersDir, "nova");
 
+    public static string RendererDir(string id, string? runtimeIdentifier = null)
+        => string.IsNullOrWhiteSpace(runtimeIdentifier)
+            ? Path.Combine(RenderersDir, id)
+            : Path.Combine(RenderersDir, id, runtimeIdentifier);
+
+    /// <summary>
+    /// Loads every installed renderer build. Supports the per-RID layout
+    /// (<c>renderers/&lt;id&gt;/&lt;rid&gt;/renderer.json</c>) and the legacy flat
+    /// layout (<c>renderers/&lt;id&gt;/renderer.json</c>). A per-RID install wins
+    /// over a legacy one with the same id and RID.
+    /// </summary>
+    public static List<RendererConfig> LoadRenderers()
+    {
         var configs = new List<RendererConfig>();
-        foreach (var dir in Directory.GetDirectories(RenderersDir))
+        if (!Directory.Exists(RenderersDir)) return configs;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(RendererConfig? config)
         {
-            var config = RendererConfig.Load(dir);
-            if (config != null) configs.Add(config);
+            if (config == null) return;
+            var key = $"{config.InstallId}\0{config.RuntimeIdentifier}";
+            if (seen.Add(key)) configs.Add(config);
         }
 
-        if (configs.Count == 0) return null;
+        foreach (var root in Directory.GetDirectories(RenderersDir).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        {
+            var installId = Path.GetFileName(root);
+
+            // New layout: one distribution per runtime, so platforms coexist.
+            foreach (var ridDir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+                Add(RendererConfig.Load(ridDir, installId));
+
+            // Legacy layout: the renderer root is the distribution itself.
+            Add(RendererConfig.Load(root));
+        }
+
+        return configs;
+    }
+
+    /// <summary>
+    /// Finds an installed renderer by folder or config id for a runtime.
+    /// When <paramref name="runtimeIdentifier"/> is omitted the host RID is
+    /// used. With no id, prefers MonoGame and otherwise uses the first match.
+    /// </summary>
+    public static RendererConfig? FindRenderer(string? id = null, string? runtimeIdentifier = null)
+    {
+        var rid = string.IsNullOrWhiteSpace(runtimeIdentifier)
+            ? HostRuntimeIdentifier
+            : runtimeIdentifier.Trim();
+
+        var byId = LoadRenderers()
+            .Where(c => MatchesId(c, id))
+            .ToList();
+
+        var matches = byId.Where(c => MatchesRid(c, rid)).ToList();
+        if (matches.Count == 0)
+        {
+            // Configs written before RIDs were recorded have no runtime and
+            // can serve as an "any" fallback.
+            matches = byId.Where(c => string.IsNullOrWhiteSpace(c.RuntimeIdentifier)).ToList();
+        }
+
+        if (matches.Count == 0) return null;
 
         if (!string.IsNullOrWhiteSpace(id))
-        {
-            return configs.FirstOrDefault(c =>
-                string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(Path.GetFileName(c.Directory), id, StringComparison.OrdinalIgnoreCase));
-        }
+            return matches[0];
 
-        return configs.FirstOrDefault(c => string.Equals(c.Id, "monogame", StringComparison.OrdinalIgnoreCase))
-            ?? configs[0];
+        return matches.FirstOrDefault(c => string.Equals(c.Id, "monogame", StringComparison.OrdinalIgnoreCase))
+            ?? matches[0];
     }
+
+    /// <summary>Finds a renderer by id ignoring the runtime, preferring the host RID.</summary>
+    public static RendererConfig? FindRendererAny(string? id)
+    {
+        var matches = LoadRenderers().Where(c => MatchesId(c, id)).ToList();
+        if (matches.Count == 0) return null;
+
+        return matches.FirstOrDefault(c => MatchesRid(c, HostRuntimeIdentifier))
+            ?? matches.FirstOrDefault(c => string.IsNullOrWhiteSpace(c.RuntimeIdentifier))
+            ?? matches[0];
+    }
+
+    static bool MatchesId(RendererConfig config, string? id)
+        => string.IsNullOrWhiteSpace(id)
+           || string.Equals(config.Id, id, StringComparison.OrdinalIgnoreCase)
+           || string.Equals(config.InstallId, id, StringComparison.OrdinalIgnoreCase);
+
+    static bool MatchesRid(RendererConfig config, string rid)
+        => string.Equals(config.RuntimeIdentifier, rid, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Human-readable "id [rid]" list for error messages.</summary>
+    public static string DescribeRenderer(RendererConfig config)
+        => $"{config.Id} [{config.DisplayRid}]";
 
     public static void EnsureHome()
     {

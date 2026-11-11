@@ -12,6 +12,8 @@ static class ServeCommand
         var manifestPath = GetOpt(args, "--manifest", "-m");
         var noRenderer = args.Contains("--no-renderer");
         var rendererId = noRenderer ? "none" : GetOpt(args, "--renderer", "-r");
+        var runtime = ArgParser.GetOptions(args, "--runtime").FirstOrDefault()
+            ?? Purr.HostRuntimeIdentifier;
         if (!string.IsNullOrWhiteSpace(manifestPath) && !Path.IsPathRooted(manifestPath))
             manifestPath = Path.GetFullPath(manifestPath);
         int.TryParse(intervalStr, out var interval);
@@ -67,7 +69,7 @@ static class ServeCommand
         var lastBuild = DateTime.UtcNow;
         var buildCount = 0;
 
-                    RunBuild(watchPaths, path, output, copyTarget, manifestPath, outPak, compilerExe, rendererId, ref buildCount, ref lastBuild);
+                    RunBuild(watchPaths, path, output, copyTarget, manifestPath, outPak, compilerExe, rendererId, runtime, ref buildCount, ref lastBuild);
 
         // Simple cancel handling
         var cancelled = false;
@@ -79,7 +81,7 @@ static class ServeCommand
             {
                 Thread.Sleep(interval);
                 if (HasChanges(watchPaths, lastBuild))
-        RunBuild(watchPaths, path, output, copyTarget, manifestPath, outPak, compilerExe, rendererId, ref buildCount, ref lastBuild);
+        RunBuild(watchPaths, path, output, copyTarget, manifestPath, outPak, compilerExe, rendererId, runtime, ref buildCount, ref lastBuild);
             }
         }
         catch (OperationCanceledException) { }
@@ -189,7 +191,8 @@ static class ServeCommand
     }
 
     static void RunBuild(List<string> watchPaths, string path, string? output, string? copyTarget, string? manifestPath,
-                          string outPak, string compilerExe, string? rendererId, ref int buildCount, ref DateTime lastBuild)
+                          string outPak, string compilerExe, string? rendererId, string runtime,
+                          ref int buildCount, ref DateTime lastBuild)
     {
         buildCount++;
         ConOut.WriteLine("[{0}] Build #{1}...", DateTimeOffset.Now.ToString("HH:mm:ss"), buildCount);
@@ -212,13 +215,13 @@ static class ServeCommand
 
             lastBuild = DateTime.UtcNow;
             ConOut.WriteLine("[{0}] OK ({1})", DateTimeOffset.Now.ToString("HH:mm:ss"), FormatBytes(new FileInfo(outPath).Length));
-            RendererDeployment.CopyToOutput(outPath, rendererId);
+            RendererDeployment.CopyToOutput(outPath, rendererId, runtime);
 
             // Copy to target
             if (!string.IsNullOrEmpty(copyTarget))
             {
                 File.Copy(outPath, Path.Join(copyTarget, outPak), true);
-                RendererDeployment.CopyToOutput(Path.Join(copyTarget, outPak), rendererId);
+                RendererDeployment.CopyToOutput(Path.Join(copyTarget, outPak), rendererId, runtime);
                 ConOut.WriteLine("[{0}] Copied to '{1}/'", DateTimeOffset.Now.ToString("HH:mm:ss"), copyTarget);
             }
         }
