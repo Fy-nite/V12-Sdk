@@ -51,6 +51,8 @@ static class SyncCommand
         var noBuild = args.Contains("--no-build");
         var verbose = args.Contains("--verbose");
         var dev = args.Contains("--dev") || args.Contains("-d");
+        var listOnly = args.Contains("--list") || args.Contains("--dry-run");
+        var fresh = args.Contains("--fresh");
 
         // Resolve version
         var version = versionOpt ?? TryReadV12VersionFromMonorepo() ?? "1.0.0";
@@ -96,16 +98,40 @@ static class SyncCommand
             var srcDir = Path.Combine(Purr.Home, "src");
             Directory.CreateDirectory(srcDir);
             monorepoDir = Path.Combine(srcDir, "V12-Monorepo");
+
+            if (fresh && Directory.Exists(monorepoDir))
+            {
+                ConOut.WriteLine($"[sync] Removing cached monorepo at {monorepoDir} (--fresh)");
+                Directory.Delete(monorepoDir, true);
+            }
+
             // If PURR_HOME cache already has it, pull; else clone
             if (Directory.Exists(Path.Combine(monorepoDir, ".git")))
             {
                 ConOut.WriteLine($"[sync] Updating cached monorepo at {monorepoDir} (ref: {refOpt})...");
-                var pull = PwshUtil.RunProcess("git", $"fetch origin", monorepoDir);
-                if (pull != 0 && !force) return pull;
-                // Try to checkout ref, fall back to main/master
-                PwshUtil.RunProcess("git", $"checkout {refOpt}", monorepoDir);
-                PwshUtil.RunProcess("git", $"pull --ff-only", monorepoDir);
-                PwshUtil.RunProcess("git", $"submodule update --init --recursive", monorepoDir);
+
+                var fetch = PwshUtil.RunProcess("git", "fetch origin --prune", monorepoDir);
+                if (fetch != 0 && !force) return fetch;
+
+                var checkout = PwshUtil.RunProcess("git", $"checkout {refOpt}", monorepoDir);
+                if (checkout != 0)
+                {
+                    ConOut.WriteError(
+                        $"[sync] Warning: cached monorepo could not check out '{refOpt}'. " +
+                        "Use --fresh to re-clone it.");
+                }
+
+                var pull = PwshUtil.RunProcess("git", "pull --ff-only", monorepoDir);
+                if (pull != 0)
+                {
+                    ConOut.WriteError(
+                        "[sync] Warning: cached monorepo could not fast-forward; it may be stale. " +
+                        "Use --fresh to re-clone it.");
+                    if (!force) return pull;
+                }
+
+                var submodules = PwshUtil.RunProcess("git", "submodule update --init --recursive", monorepoDir);
+                if (submodules != 0 && !force) return submodules;
             }
             else
             {
@@ -126,6 +152,8 @@ static class SyncCommand
             }
         }
 
+        ConOut.WriteLine($"[sync] Monorepo source: {monorepoDir}");
+
         // Also try to read version from monorepo's Directory.Build.props if not specified
         if (string.IsNullOrWhiteSpace(versionOpt))
         {
@@ -142,6 +170,14 @@ static class SyncCommand
         {
             ConOut.WriteError($"[sync] Error: no packable V12 modules found under '{monorepoDir}'.");
             return 1;
+        }
+
+        if (listOnly)
+        {
+            ConOut.WriteLine($"[sync] Discovered {modules.Count} module(s):");
+            foreach (var module in modules)
+                ConOut.WriteLine($"  {module.PackageId,-34} {module.ProjectPath}");
+            return 0;
         }
 
         ConOut.WriteLine($"[sync] Packing {modules.Count} module(s) v{version} -> {packagesDir}");
@@ -348,6 +384,8 @@ Options:
   --version <ver>        Package version to pack (default: V12Version from Directory.Build.props, else 1.0.0)
   --dev, -d              Append a unique -dev.<timestamp> prerelease suffix
   -o, --output <path>    Output packages dir (default: ~/.purr/packages or $PURR_HOME/packages)
+  --list, --dry-run      Show the resolved monorepo and discovered modules, then exit
+  --fresh                Delete the cached monorepo clone and re-clone it
   --force                Continue on error, overwrite existing
   --no-build             Pass --no-build to dotnet pack
   --verbose              Verbose pack output

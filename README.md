@@ -7,11 +7,26 @@ A development toolkit for building and packaging [Contract](https://github.com/F
 ### From source
 ```bash
 git clone https://github.com/Fy-nite/V12-Sdk.git
-cd V12.Sdk
-dotnet publish -c Release -o vcsdk --self-contained false
-# Add to your PATH or install as a global tool:
-dotnet tool install --global --add-source ./vcsdk V12.Sdk
+cd V12-Sdk
+
+# Build and install/replace the global `vcsdk` tool.
+# The script clears the NuGet tool cache first so a reinstall at the same
+# version does not keep running old code.
+pwsh ./install.ps1
 ```
+
+Or manually:
+
+```bash
+dotnet pack -c Release -o ./nupkg
+dotnet tool uninstall --global V12.Sdk
+rm -rf ~/.nuget/packages/v12.sdk/0.1.0   # Windows: %USERPROFILE%\.nuget\packages\v12.sdk\0.1.0
+dotnet tool install --global --add-source ./nupkg --version 0.1.0 V12.Sdk
+```
+
+When updating an existing checkout, pull the **submodules** too
+(`git submodule update --init --recursive`) before reinstalling; the SDK is a
+submodule of the monorepo and a parent-repo pull alone does not move it.
 
 ### Requirements
 - [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -305,6 +320,8 @@ source of truth for `V12Version` and the package feed.
 | `--version <ver>` | `-v` | Package version | `V12Version` from `Directory.Build.props` |
 | `--output <path>` | `-o` | Packages output directory | `$PURR_HOME/packages` |
 | `--dev` | `-d` | Add a unique `-dev.<timestamp>` suffix | *(false)* |
+| `--list` | `--dry-run` | Print the resolved monorepo and discovered modules, then exit | *(false)* |
+| `--fresh` | — | Delete the cached monorepo clone and re-clone it | *(false)* |
 | `--force` | `-f` | Continue when a module fails to pack | *(false)* |
 | `--no-build` | — | Pass `--no-build` to `dotnet pack` | *(false)* |
 | `--verbose` | — | Verbose pack output | *(false)* |
@@ -317,6 +334,12 @@ vcsdk sync
 
 # Pack a specific local checkout with a dev version
 vcsdk sync --monorepo ../V12-Monorepo --dev
+
+# Diagnose what sync will build without packing anything
+vcsdk sync --list
+
+# Force a clean re-clone when the cached monorepo is stale
+vcsdk sync --fresh
 ```
 
 ---
