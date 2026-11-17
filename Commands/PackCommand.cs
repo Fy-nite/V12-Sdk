@@ -60,6 +60,21 @@ static class PackCommand
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            // "any" is a portable publish: every RID's native libraries are kept
+            // under bin/runtimes/<rid>/native and the loader picks the matching
+            // one, so a single pak runs on Windows, Linux and macOS.
+            if (requestedRuntimes.Any(IsUniversalRuntime))
+            {
+                if (requestedRuntimes.Count > 1)
+                {
+                    ConOut.WriteError(
+                        "[V12.Sdk] --runtime any already carries every platform; ignoring the other RIDs.");
+                }
+
+                ConOut.WriteLine("[V12.Sdk] Runtime target: any (universal pak)");
+                return Execute(args, pathOverride, "any", multiRuntime: false);
+            }
+
             if (requestedRuntimes.Count > 1)
             {
                 foreach (var rid in requestedRuntimes)
@@ -74,7 +89,14 @@ static class PackCommand
 
         // Default to the host RID, not the RID stored in a renderer.json (that
         // is what made Windows renderers drive Linux/macOS builds).
-        var runtime = runtimeOverride ?? GetOpt(args, "--runtime") ?? Purr.HostRuntimeIdentifier;
+        var requestedRuntime = runtimeOverride ?? GetOpt(args, "--runtime") ?? Purr.HostRuntimeIdentifier;
+        bool universal = IsUniversalRuntime(requestedRuntime);
+
+        // A universal pak is published without -r so NuGet materializes every
+        // platform's runtimes/<rid>/native assets. The renderer is still a real
+        // host binary, so it stays on the host RID.
+        string publishRuntime = universal ? string.Empty : requestedRuntime;
+        var runtime = universal ? Purr.HostRuntimeIdentifier : requestedRuntime;
         var renderer = noRenderer ? null : Purr.FindRenderer(rendererId, runtime);
 
         var path = pathOverride ?? ParsePositional(args) ?? ".";
@@ -143,11 +165,13 @@ static class PackCommand
         }
         else
         {
-            var runtimeLabel = string.IsNullOrWhiteSpace(runtime) ? "" : $" {runtime}";
+            var runtimeLabel = universal
+                ? " universal"
+                : string.IsNullOrWhiteSpace(publishRuntime) ? "" : $" {publishRuntime}";
             ConOut.WriteLine($"[V12.Sdk] dotnet publish ({configuration}{runtimeLabel})...");
             var publishArgs =
                 $"publish \"{projectPath}\" -c {configuration} -o \"{publish}\" --nologo --no-self-contained" +
-                (string.IsNullOrWhiteSpace(runtime) ? "" : $" -r {runtime}") +
+                (string.IsNullOrWhiteSpace(publishRuntime) ? "" : $" -r {publishRuntime}") +
                 (noRestore ? " --no-restore" : "");
             var exit = PwshUtil.RunProcess("dotnet", publishArgs, gameDir);
             if (exit != 0)
@@ -339,11 +363,36 @@ static class PackCommand
             CopyPdb(dll, destination);
         }
 
+        // Native libraries. A RID-specific publish flattens them next to the
+        // managed DLLs (assimp.dll, libassimp.so, libassimp.dylib); a portable
+        // publish keeps them under runtimes/<rid>/native, which is copied below.
+        // Both layouts are staged so the pak carries the right library for
+        // whichever platform the renderer runs on.
+        foreach (var library in Directory.GetFiles(publish))
+        {
+            if (!IsNativeLibrary(library)) continue;
+
+            File.Copy(library, Path.Combine(binDir, Path.GetFileName(library)), true);
+        }
+
         var runtimes = Path.Combine(publish, "runtimes");
         if (Directory.Exists(runtimes))
             CopyDirectory(runtimes, Path.Combine(binDir, "runtimes"), _ => true);
 
         return true;
+    }
+
+    /// <summary>
+    /// True for native library files that the managed-assembly scan does not
+    /// pick up: Unix shared objects (including versioned sonames) and macOS
+    /// dylibs. Windows natives are <c>.dll</c> and are staged with the rest.
+    /// </summary>
+    static bool IsNativeLibrary(string path)
+    {
+        string name = Path.GetFileName(path);
+        return name.EndsWith(".so", StringComparison.OrdinalIgnoreCase)
+               || name.Contains(".so.", StringComparison.OrdinalIgnoreCase)
+               || name.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase);
     }
 
     static void CopyContent(string gameDir, string stage, bool liveScripts, V12PakManifest? manifest)
@@ -590,6 +639,18 @@ static class PackCommand
         return parsed.Major.ToString();
     }
 
+    /// <summary>
+    /// True for the portable/universal runtime tokens. Such a pak is published
+    /// without a RID and keeps <c>runtimes/&lt;rid&gt;/native</c> for every platform,
+    /// which <see cref="V12.Pak.V12PakLoader"/> resolves at load time.
+    /// </summary>
+    internal static bool IsUniversalRuntime(string? runtimeIdentifier)
+        => !string.IsNullOrWhiteSpace(runtimeIdentifier)
+           && (runtimeIdentifier.Equals("any", StringComparison.OrdinalIgnoreCase)
+               || runtimeIdentifier.Equals("all", StringComparison.OrdinalIgnoreCase)
+               || runtimeIdentifier.Equals("universal", StringComparison.OrdinalIgnoreCase)
+               || runtimeIdentifier.Equals("portable", StringComparison.OrdinalIgnoreCase));
+
     static bool IsEngineAssembly(string simpleName)
         => string.Equals(simpleName, "V12", StringComparison.OrdinalIgnoreCase)
            || simpleName.StartsWith("V12.", StringComparison.OrdinalIgnoreCase);
@@ -708,6 +769,8 @@ Options:
                             comma-separated, e.g. win-x64,linux-x64. Default:
                             the host RID. Multi-RID builds name the pak
                             <name>-<rid>.v12pak and copy the matching renderer.
+                            Use "any" for one universal pak that keeps every
+                            platform's native libraries (resolved at load time).
   -r, --renderer <id>       Installed renderer host to copy (default: monogame)
       --no-renderer         Do not copy a renderer host beside the pak
   -c, --copy-target <dir>   Copy the built pak (and renderer) into this directory
